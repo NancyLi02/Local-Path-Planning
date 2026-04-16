@@ -20,10 +20,14 @@ Usage:
 
 from __future__ import annotations
 
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
 from scipy.interpolate import CubicSpline
 import gymnasium as gym
 from gymnasium import spaces
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
@@ -33,6 +37,19 @@ import matplotlib.pyplot as plt
 
 def wrap_angle(a: float) -> float:
     return (a + np.pi) % (2 * np.pi) - np.pi
+
+
+def _obs_normalization_scales(cfg: dict) -> tuple[float, float, float, float, float]:
+    """Scales for obs normalization: lat, lookahead pos, rel vel, map size, max_v."""
+    max_h_sp = float(cfg["human_speed_range"][1])
+    lat_s = max(cfg["corridor_w"] * 1.5, cfg["success_lat_thresh"], 0.5)
+    pos_s = max(
+        cfg["n_lookahead"] * cfg["lookahead_spacing"] + 3.0,
+        cfg["corridor_len"] * 0.5,
+        5.0,
+    )
+    vel_s = max(cfg["max_v"] + max_h_sp, 0.5)
+    return lat_s, pos_s, vel_s, float(cfg["map_size"]), float(cfg["max_v"])
 
 
 # ======================================================================
@@ -173,12 +190,15 @@ class LocalPlannerEnv(gym.Env):
     """Gymnasium environment for local path revision around a dynamic human.
 
     Observation (float32 vector, dim = 1 + 3 + 2*N_look + 4 + 1):
-        [0]             robot speed
-        [1]             normalised path progress (0‒1)
-        [2]             signed lateral offset (+ = left)
-        [3]             heading error w.r.t. path tangent
-        [4 : 4+2N]      N lookahead path points in robot frame (x,y pairs)
-        [4+2N : 4+2N+4] human relative (rx, ry, rvx, rvy) in robot frame
+        With ``normalize_obs=True`` (default), entries are scaled to roughly O(1);
+        progress and risk stay in [0, 1].
+
+        [0]             robot speed (normalized by ``max_v`` when enabled)
+        [1]             path progress in [0, 1]
+        [2]             signed lateral offset (+ = left), scaled
+        [3]             heading error w.r.t. path tangent, scaled by π
+        [4 : 4+2N]      N lookahead path points in robot frame (x,y pairs), scaled
+        [4+2N : 4+2N+4] human relative (rx, ry, rvx, rvy) in robot frame, scaled
         [-1]            corridor risk flag (1.0 if human in corridor)
 
     Action (float32, shape=(2,)):
@@ -227,6 +247,12 @@ class LocalPlannerEnv(gym.Env):
         oob_margin=2.0,
         # human appearance
         human_delay=2.0,
+        # non-conflict spawns: pedestrian beside path, outside corridor
+        p_ambient_human=0.28,
+        # observation normalization (recommended for PPO)
+        normalize_obs=True,
+        # include per-term rewards in ``step`` info (small overhead)
+        return_reward_breakdown=False,
         # path curvature limit (κ = 1/radius; 0.3 ≈ min radius 3.3 m)
         max_path_curvature=0.3,
     )
@@ -266,6 +292,7 @@ class LocalPlannerEnv(gym.Env):
 
         self._human_visible = False
         self._human_appear_step = int(round(self.cfg["human_delay"] / self.cfg["dt"]))
+        self._ep_min_d_human = float("inf")
 
         self._fig = None
         self._ax = None
@@ -385,24 +412,46 @@ class LocalPlannerEnv(gym.Env):
 
         self.path = ReferencePath(np.column_stack([xs, _build(lo)]))
 
-    def _spawn_human(self, rng: np.random.Generator) -> None:
-        """Spawn a human on a **collision course** with the robot.
+    def _spawn_human_ambient(self, rng: np.random.Generator) -> None:
+        """Low-conflict pedestrian beside the path (outside the corridor)."""
+        c = self.cfg
+        side = float(rng.choice([-1.0, 1.0]))
+        s0 = self.cur_s + float(rng.uniform(4.0, 11.0))
+        s0 = float(np.clip(s0, self.cur_s + 2.0, self.path.total_length - 2.0))
+        p0 = self.path.position(s0)
+        n0 = self.path.normal(s0)
+        tan0 = self.path.tangent(s0)
+        lateral_min = c["corridor_w"] + float(rng.uniform(0.7, 1.8))
+        lateral_max = min(float(c["map_size"]) * 0.28, lateral_min + 3.5)
+        lateral = float(rng.uniform(lateral_min, max(lateral_max, lateral_min + 0.5)))
+        start = p0 + side * n0 * lateral
+        v_walk = float(rng.uniform(0.05, 0.17))
+        self.hx, self.hy = float(start[0]), float(start[1])
+        self.hvx, self.hvy = float(tan0[0] * v_walk), float(tan0[1] * v_walk)
+        self._h_behav = "ambient"
 
-        The key idea: pick an encounter point on the path ahead, compute
-        the time for the robot to reach it, then place the human so that
-        it arrives at the same point at (approximately) the same time.
+    def _spawn_human(self, rng: np.random.Generator) -> None:
+        """Spawn a human: mostly encounter-style, sometimes ambient (see ``p_ambient_human``).
+
+        Encounter spawns pick a point ahead and time the human to meet the robot
+        there; ambient spawns place a pedestrian beside the path with mild motion.
+
+        ``encounter_t_range`` controls the time horizon (default ``(3.0, 6.0)``);
+        use a tighter range like ``(2.0, 3.5)`` for harder evaluation scenarios.
         """
         c = self.cfg
+        if rng.random() < float(c.get("p_ambient_human", 0.0)):
+            self._spawn_human_ambient(rng)
+            return
+
         behav = str(rng.choice(["cross", "side", "along"]))
         speed = float(rng.uniform(*c["human_speed_range"]))
 
-        # Average robot speed (blend of pre-sim init_v and episode max_v)
         v_r = (c["init_v"] + c["max_v"]) * 0.5
 
-        # Time horizon until encounter (seconds, includes pre-sim time)
-        t_enc = float(rng.uniform(3.0, 6.0))
+        t_lo, t_hi = c.get("encounter_t_range", (3.0, 6.0))
+        t_enc = float(rng.uniform(t_lo, t_hi))
 
-        # Encounter point on the reference path
         enc_s = self.cur_s + v_r * t_enc
         enc_s = min(enc_s, self.path.total_length - 2.0)
         enc_pos = self.path.position(enc_s)
@@ -410,8 +459,8 @@ class LocalPlannerEnv(gym.Env):
         tan = self.path.tangent(enc_s)
         side = rng.choice([-1.0, 1.0])
 
-        # Slight timing jitter so it's not always a perfect head-on
-        t_h = t_enc * float(rng.uniform(0.85, 1.1))
+        jitter_lo, jitter_hi = c.get("encounter_jitter", (0.85, 1.1))
+        t_h = t_enc * float(rng.uniform(jitter_lo, jitter_hi))
 
         if behav == "cross":
             start_dist = speed * t_h
@@ -457,7 +506,7 @@ class LocalPlannerEnv(gym.Env):
         return dist < c["corridor_w"]
 
     def _activate_human(self) -> None:
-        """Spawn the human on a collision course from the robot's current position."""
+        """Spawn the human (encounter- or ambient-style) from the robot's state."""
         self._spawn_human(self.np_random)
         self._human_visible = True
 
@@ -501,38 +550,79 @@ class LocalPlannerEnv(gym.Env):
         else:
             hrx, hry, hrvx, hrvy, risk = 10.0, 0.0, 0.0, 0.0, 0.0
 
-        return np.array(
-            [self.rv, progress, lat, h_err] + look + [hrx, hry, hrvx, hrvy, risk],
-            dtype=np.float32,
-        )
+        vec = [self.rv, progress, lat, h_err] + look + [hrx, hry, hrvx, hrvy, risk]
+        if c.get("normalize_obs", False):
+            lat_s, pos_s, vel_s, ms, mv = _obs_normalization_scales(c)
+            vec[0] = float(vec[0]) / mv
+            vec[2] = float(vec[2]) / lat_s
+            vec[3] = float(vec[3]) / np.pi
+            for i in range(4, 4 + 2 * c["n_lookahead"], 2):
+                vec[i] = float(vec[i]) / pos_s
+                vec[i + 1] = float(vec[i + 1]) / pos_s
+            hb = 4 + 2 * c["n_lookahead"]
+            vec[hb] = float(vec[hb]) / ms
+            vec[hb + 1] = float(vec[hb + 1]) / ms
+            vec[hb + 2] = float(vec[hb + 2]) / vel_s
+            vec[hb + 3] = float(vec[hb + 3]) / vel_s
+
+        return np.asarray(vec, dtype=np.float32)
 
     # ------------------------------------------------------------------
     # Reward
     # ------------------------------------------------------------------
 
-    def _reward(self, old_s: float, collision: bool, success: bool) -> float:
+    def _reward_terms(self, old_s: float, collision: bool, success: bool) -> dict[str, float]:
+        """Per-shaping reward terms plus ``total`` (same scalar as env reward)."""
         c = self.cfg
+        terms: dict[str, float] = {}
         if collision:
-            return float(c["w_collision"])
+            terms["collision"] = float(c["w_collision"])
+            terms["total"] = terms["collision"]
+            return terms
 
         r = 0.0
         if self._human_visible:
             dh = np.hypot(self.rx - self.hx, self.ry - self.hy)
             if dh < c["safety_dist"]:
-                r += c["w_safety"] * (c["safety_dist"] - dh) / c["safety_dist"]
+                s_term = c["w_safety"] * (c["safety_dist"] - dh) / c["safety_dist"]
+                terms["safety"] = float(s_term)
+                r += s_term
+            else:
+                terms["safety"] = 0.0
+        else:
+            terms["safety"] = 0.0
 
         _, lat, _ = self.path.closest_point(
             self.rx, self.ry, s_hint=self.cur_s, search_radius=5.0,
         )
-        r += c["w_deviation"] * lat ** 2
-        r += c["w_heading"] * abs(wrap_angle(self.rtheta - self.path.heading(self.cur_s)))
-        r += c["w_progress"] * max(0.0, self.cur_s - old_s)
-        r += c["w_speed"] * (self.rv / c["max_v"])
+        dev = c["w_deviation"] * lat ** 2
+        terms["deviation"] = float(dev)
+        r += dev
+        hdg = c["w_heading"] * abs(
+            wrap_angle(self.rtheta - self.path.heading(self.cur_s)),
+        )
+        terms["heading"] = float(hdg)
+        r += hdg
+        prog = c["w_progress"] * max(0.0, self.cur_s - old_s)
+        terms["progress"] = float(prog)
+        r += prog
+        spd = c["w_speed"] * (self.rv / c["max_v"])
+        terms["speed"] = float(spd)
+        r += spd
+        terms["time"] = float(c["w_time"])
         r += c["w_time"]
 
         if success:
+            terms["success_bonus"] = float(c["w_success"])
             r += c["w_success"]
-        return float(r)
+        else:
+            terms["success_bonus"] = 0.0
+
+        terms["total"] = float(r)
+        return terms
+
+    def _reward(self, old_s: float, collision: bool, success: bool) -> float:
+        return self._reward_terms(old_s, collision, success)["total"]
 
     # ------------------------------------------------------------------
     # Termination
@@ -551,11 +641,11 @@ class LocalPlannerEnv(gym.Env):
                 info["collision"] = True
                 return terminated, truncated, collision, success, info
 
-            _, _, lat_abs = self.path.closest_point(
+            _, lat, _ = self.path.closest_point(
                 self.rx, self.ry, s_hint=self.cur_s, search_radius=5.0,
             )
             h_err = abs(wrap_angle(self.rtheta - self.path.heading(self.cur_s)))
-            on_path = lat_abs < c["success_lat_thresh"] and h_err < c["success_hdg_thresh"]
+            on_path = abs(lat) < c["success_lat_thresh"] and h_err < c["success_hdg_thresh"]
             cr, sr = np.cos(self.rtheta), np.sin(self.rtheta)
             h_ahead = cr * (self.hx - self.rx) + sr * (self.hy - self.ry)
             human_behind = h_ahead < 0
@@ -607,6 +697,7 @@ class LocalPlannerEnv(gym.Env):
         self._h_behav = ""
 
         self.steps = 0
+        self._ep_min_d_human = float("inf")
         self._rtraj = [np.array([self.rx, self.ry])]
         self._htraj = []
         self._goals = []
@@ -625,6 +716,7 @@ class LocalPlannerEnv(gym.Env):
             self._activate_human()
 
         action = np.asarray(action, dtype=np.float32)
+        action = np.clip(action, self.action_space.low, self.action_space.high)
         fwd, lat = float(action[0]), float(action[1])
 
         cr, sr = np.cos(self.rtheta), np.sin(self.rtheta)
@@ -651,6 +743,8 @@ class LocalPlannerEnv(gym.Env):
             self.hx += self.hvx * dt
             self.hy += self.hvy * dt
             self._htraj.append(np.array([self.hx, self.hy]))
+            dh_step = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
+            self._ep_min_d_human = min(self._ep_min_d_human, dh_step)
 
         self._rtraj.append(np.array([self.rx, self.ry]))
 
@@ -662,6 +756,43 @@ class LocalPlannerEnv(gym.Env):
         info["step"] = self.steps
         if self._human_visible:
             info["behavior"] = self._h_behav
+        if c.get("return_reward_breakdown"):
+            info["reward_terms"] = self._reward_terms(old_s, collision, success)
+
+        if terminated or truncated:
+            _, lat_f, _ = self.path.closest_point(
+                self.rx, self.ry, s_hint=self.cur_s, search_radius=5.0,
+            )
+            h_err_f = abs(wrap_angle(self.rtheta - self.path.heading(self.cur_s)))
+            on_path_end = (
+                abs(lat_f) < c["success_lat_thresh"]
+                and h_err_f < c["success_hdg_thresh"]
+            )
+            ep_min = (
+                float(self._ep_min_d_human)
+                if self._ep_min_d_human < float("inf")
+                else -1.0
+            )
+            human_clear_end = False
+            if self._human_visible:
+                dh_e = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
+                cr, sr = np.cos(self.rtheta), np.sin(self.rtheta)
+                h_ahead = cr * (self.hx - self.rx) + sr * (self.hy - self.ry)
+                human_behind = h_ahead < 0
+                human_far = dh_e > c["safety_dist"] * 2
+                human_clear_end = (
+                    not self._in_corridor(self.hx, self.hy)
+                    and (human_far or human_behind)
+                )
+            info["episode_stats"] = {
+                "collision": bool(collision),
+                "success": bool(success),
+                "min_human_dist": ep_min,
+                "final_abs_lateral": float(abs(lat_f)),
+                "on_path_at_end": bool(on_path_end),
+                "human_clear_at_end": bool(human_clear_end),
+            }
+
         return obs, reward, terminated, truncated, info
 
     # ------------------------------------------------------------------
@@ -734,13 +865,14 @@ class LocalPlannerEnv(gym.Env):
         if self.render_mode == "human":
             self._fig.canvas.draw_idle()
             self._fig.canvas.flush_events()
-            plt.pause(0.01)
+            try:
+                plt.pause(0.01)
+            except Exception:
+                pass
 
         if self._recording or self.render_mode == "rgb_array":
             self._fig.canvas.draw()
-            w, h = self._fig.canvas.get_width_height()
-            buf = np.frombuffer(self._fig.canvas.tostring_rgb(), dtype=np.uint8)
-            frame = buf.reshape((h, w, 3))
+            frame = np.asarray(self._fig.canvas.buffer_rgba())[..., :3]
             if self._recording:
                 self._frames.append(frame.copy())
             if self.render_mode == "rgb_array":
@@ -816,9 +948,7 @@ def _show_result(env, tag: str, ret: float, steps: int, wait: bool = True):
     # Capture the result frame for video (hold ~1 s worth of frames)
     if env._recording:
         env._fig.canvas.draw()
-        w, h = env._fig.canvas.get_width_height()
-        buf = np.frombuffer(env._fig.canvas.tostring_rgb(), dtype=np.uint8)
-        result_frame = buf.reshape((h, w, 3)).copy()
+        result_frame = np.asarray(env._fig.canvas.buffer_rgba())[..., :3].copy()
         for _ in range(10):
             env._frames.append(result_frame)
 
@@ -834,12 +964,16 @@ def _show_result(env, tag: str, ret: float, steps: int, wait: bool = True):
 def _obs_to_path_goal(obs, cfg, lookahead_idx: int = 2):
     """Extract the i-th lookahead path point from obs as an action.
 
-    Returns the raw robot-frame (lx, ly) of the path point.  step() does
-    NOT clip the action, so the goal lands exactly on the reference path
-    regardless of curvature.
+    Returns the raw robot-frame (lx, ly) of the path point. If
+    ``cfg['normalize_obs']`` is true, lookahead entries are scaled back to metres.
+    ``step()`` clips actions to ``action_space``.
     """
     base = 4 + (lookahead_idx - 1) * 2
-    return np.array([obs[base], obs[base + 1]], dtype=np.float32)
+    lx, ly = float(obs[base]), float(obs[base + 1])
+    if cfg.get("normalize_obs", False):
+        _, pos_s, _, _, _ = _obs_normalization_scales(cfg)
+        lx, ly = lx * pos_s, ly * pos_s
+    return np.array([lx, ly], dtype=np.float32)
 
 
 def demo_random(episodes: int = 3, render: bool = True, save_video: str | None = None):
