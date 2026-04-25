@@ -1,0 +1,14 @@
+{
+  "path_pen_min": 0.15,
+  "path_pen_restore_dist": 3.0,
+  "reward_version": "r_v1",
+  "w_collision": -200.0,
+  "w_deviation": -5.0,
+  "w_heading": -2.0,
+  "w_progress": 20.0,
+  "w_return_path": 3.0,
+  "w_safety": -5.0,
+  "w_speed": 2.0,
+  "w_success": 100.0,
+  "w_time": -0.5
+}

@@ -1,0 +1,97 @@
+{
+  "base_env_config": {
+    "normalize_obs": true
+  },
+  "eval_env_config": {
+    "encounter_jitter": [
+      0.92,
+      1.05
+    ],
+    "encounter_t_range": [
+      2.0,
+      3.5
+    ],
+    "human_delay": 1.0,
+    "human_from_below_prob": 0.5,
+    "normalize_obs": true,
+    "p_ambient_human": 0.0,
+    "path_pen_min": 0.1,
+    "path_pen_restore_dist": 2.0,
+    "reward_version": "r_v1",
+    "w_collision": -200.0,
+    "w_deviation": -5.0,
+    "w_heading": -2.0,
+    "w_progress": 20.0,
+    "w_return_path": 10.0,
+    "w_safety": -10.0,
+    "w_speed": 2.0,
+    "w_success": 100.0,
+    "w_time": -1.0
+  },
+  "eval_scene_config": {
+    "encounter_jitter": [
+      0.92,
+      1.05
+    ],
+    "encounter_t_range": [
+      2.0,
+      3.5
+    ],
+    "human_delay": 1.0,
+    "human_from_below_prob": 0.5,
+    "p_ambient_human": 0.0
+  },
+  "reward_config": {
+    "path_pen_min": 0.1,
+    "path_pen_restore_dist": 2.0,
+    "reward_version": "r_v1",
+    "w_collision": -200.0,
+    "w_deviation": -5.0,
+    "w_heading": -2.0,
+    "w_progress": 20.0,
+    "w_return_path": 10.0,
+    "w_safety": -10.0,
+    "w_speed": 2.0,
+    "w_success": 100.0,
+    "w_time": -1.0
+  },
+  "train_env_config": {
+    "encounter_jitter": [
+      0.9,
+      1.08
+    ],
+    "encounter_t_range": [
+      2.0,
+      4.5
+    ],
+    "human_delay": 1.5,
+    "human_from_below_prob": 0.5,
+    "normalize_obs": true,
+    "p_ambient_human": 0.12,
+    "path_pen_min": 0.1,
+    "path_pen_restore_dist": 2.0,
+    "reward_version": "r_v1",
+    "w_collision": -200.0,
+    "w_deviation": -5.0,
+    "w_heading": -2.0,
+    "w_progress": 20.0,
+    "w_return_path": 10.0,
+    "w_safety": -10.0,
+    "w_speed": 2.0,
+    "w_success": 100.0,
+    "w_time": -1.0
+  },
+  "train_scene_config": {
+    "encounter_jitter": [
+      0.9,
+      1.08
+    ],
+    "encounter_t_range": [
+      2.0,
+      4.5
+    ],
+    "human_delay": 1.5,
+    "human_from_below_prob": 0.5,
+    "p_ambient_human": 0.12
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "algo": "SAC",
+  "audit_episodes": 40,
+  "cli_args": {
+    "audit_episodes": 40,
+    "eval": false,
+    "eval_episodes": 20,
+    "hybrid": false,
+    "name": "sac_r1",
+    "render": false,
+    "reward_audit": false,
+    "save_video": false,
+    "timesteps": 1000000,
+    "use_best": false
+  },
+  "created_at_utc": "2026-04-23T18:39:35.862832+00:00",
+  "device": "auto",
+  "eval_episodes": 20,
+  "repo_root": "/home/nli331/Documents/Local-Path-Planning",
+  "run_name": "sac_r1",
+  "sac_hyperparameters": {
+    "batch_size": 256,
+    "buffer_size": 300000,
+    "ent_coef": "auto",
+    "gamma": 0.99,
+    "gradient_steps": 1,
+    "learning_rate": 0.0003,
+    "learning_starts": 1000,
+    "policy": "MlpPolicy",
+    "policy_kwargs": {
+      "net_arch": [
+        256,
+        256
+      ]
+    },
+    "target_entropy": "auto",
+    "tau": 0.005,
+    "train_freq": 1
+  },
+  "timesteps": 1000000
+}

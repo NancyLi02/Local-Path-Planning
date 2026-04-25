@@ -1,0 +1,34 @@
+{
+  "algo": "PPO",
+  "audit_episodes": 40,
+  "cli_args": {
+    "audit_episodes": 40,
+    "eval": false,
+    "eval_episodes": 20,
+    "n_envs": 8,
+    "name": "ppo_smoke",
+    "render": false,
+    "reward_audit": false,
+    "save_video": false,
+    "timesteps": 1000,
+    "use_best": false
+  },
+  "created_at_utc": "2026-04-23T18:26:14.170346+00:00",
+  "device": "auto",
+  "eval_episodes": 20,
+  "n_envs": 8,
+  "ppo_hyperparameters": {
+    "batch_size": 512,
+    "clip_range": 0.2,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "gamma": 0.99,
+    "learning_rate": 0.0003,
+    "n_epochs": 10,
+    "n_steps": 2048,
+    "policy": "MlpPolicy"
+  },
+  "repo_root": "/home/nli331/Documents/Local-Path-Planning",
+  "run_name": "ppo_smoke",
+  "timesteps": 1000
+}
