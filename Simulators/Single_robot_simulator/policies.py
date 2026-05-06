@@ -74,9 +74,12 @@ class HybridPolicy:
         if self.state == self.FOLLOW_PATH:
             if risk > 0.5:
                 self.state = self.RL_AVOID
+
         elif self.state == self.RL_AVOID:
             human_clear = risk < 0.5
-            if human_clear:
+            back_on_path = lat < self.lat_thresh and hdg < self.hdg_thresh
+
+            if human_clear and back_on_path:
                 self.state = self.FOLLOW_PATH
 
         if self.state == self.RL_AVOID:

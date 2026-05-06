@@ -1,22 +1,32 @@
 """
-Full Run Simulator for RL-based Local Path Planning
+Full Run Simulator
 
-Continuous simulation where a robot follows a long straight reference path
-from start to goal. Human encounters occur at predefined points along the
-path. Each encounter triggers an avoidance episode that ends on collision or
-successful return to the reference path, after which the robot continues
-toward the goal.
+Use this file to test a trained PPO / SAC policy on a long route.
 
-Usage:
-    from Full_run_simulator import FullRunEnv, run_full_demo
+Logic:
+    - Robot follows reference path with pure path-following.
+    - Human may become visible in observation earlier.
+    - RL policy takes over only when the human enters a tighter trigger range.
+    - Corridor membership is used as risk flag (risk=1 in corridor).
+    - After the human leaves risk region and robot returns to path, path-following resumes.
+    - Ends when robot reaches goal.
 
-    # Path-following demo (no RL model):
-    run_full_demo(render=True, save_video="full_run.gif")
+Examples:
 
-    # With a trained RL model:
-    from stable_baselines3 import SAC
-    model = SAC.load("model.zip")
-    run_full_demo(rl_model=model, render=True, save_video="full_run.gif")
+1. No RL model:
+    python3 Simulators/Full_run_simulator.py
+
+2. Test PPO:
+    python3 Simulators/Full_run_simulator.py --model models/ppo.zip --algo ppo
+
+3. Test SAC:
+    python3 Simulators/Full_run_simulator.py --model models/sac.zip --algo sac
+
+4. Save video (relative paths go under Evaluation_video/full_run/):
+    python3 Simulators/Full_run_simulator.py --model models/sac.zip --algo sac --save-video run.gif
+
+5. Longer route:
+    python3 Simulators/Full_run_simulator.py --model models/sac.zip --algo sac --path-length 80
 """
 
 from __future__ import annotations
@@ -35,14 +45,33 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from light_weight_simulator import (
-    wrap_angle,
+from Simulators.Single_robot_simulator.path import (
     ReferencePath,
-    PurePursuitController,
-    _obs_normalization_scales,
-    _obs_to_path_goal,
-    HybridPolicy,
+    obs_normalization_scales,
+    wrap_angle,
 )
+from Simulators.Single_robot_simulator.controller import PurePursuitController
+from Simulators.Single_robot_simulator.policies import obs_to_path_goal
+
+
+def _project_root() -> str:
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _default_full_run_video_dir() -> str:
+    return os.path.join(_project_root(), "Evaluation_video", "full_run")
+
+
+def _resolve_save_video_path(save_video: str) -> str:
+    """Leave absolute paths unchanged; place relative paths under Evaluation_video/full_run/."""
+    if os.path.isabs(save_video):
+        return save_video
+    out_dir = os.path.abspath(_default_full_run_video_dir())
+    candidate = os.path.abspath(os.path.normpath(os.path.join(out_dir, save_video)))
+    prefix = out_dir + os.sep
+    if candidate == out_dir or candidate.startswith(prefix):
+        return candidate
+    return os.path.join(out_dir, os.path.basename(save_video) or "full_run.gif")
 
 
 # ======================================================================
@@ -65,7 +94,7 @@ class FullRunEnv(gym.Env):
 
     DEFAULT_CFG: dict = dict(
         # Straight path
-        path_length=40.0,
+        path_length=40,
         path_y=5.0,
         # Robot
         robot_radius=0.3,
@@ -83,6 +112,10 @@ class FullRunEnv(gym.Env):
         # Corridor (detection zone ahead of robot)
         corridor_len=8.0,
         corridor_w=1.8,
+        # Human can be visible earlier, but RL does not react too early
+        rl_trigger_forward_dist=7.0,
+        rl_trigger_lateral_dist=2.2,
+        rl_trigger_behind_dist=0.5,
         # Action bounds (match LocalPlannerEnv)
         goal_fwd_range=(0.0, 3.0),
         goal_lat_range=(-2.0, 2.0),
@@ -91,8 +124,8 @@ class FullRunEnv(gym.Env):
         lookahead_spacing=1.0,
         normalize_obs=True,
         # Termination / success
-        success_lat_thresh=0.3,
-        success_hdg_thresh=0.2,
+        success_lat_thresh=0.05,
+        success_hdg_thresh=0.1,
         oob_margin=5.0,
         # Encounter definitions: list of dicts
         #   s            – arc-length position on path
@@ -101,8 +134,8 @@ class FullRunEnv(gym.Env):
         #   side         – 1.0 (from above/left) or -1.0 (from below/right)
         #   start_dist   – initial perpendicular distance from path (optional)
         encounters=[
-            dict(s=12.0, behavior="cross", speed=0.2, side=1.0),
-            dict(s=28.0, behavior="cross", speed=0.25, side=-1.0),
+            dict(s=14.0, behavior="cross", speed=0.2, side=1.0),
+            dict(s=28.0, behavior="cross", speed=0.35, side=-1.0),
         ],
         # Max angular deviation from perpendicular (radians, ~25 deg)
         cross_angle_jitter=0.45,
@@ -351,7 +384,7 @@ class FullRunEnv(gym.Env):
 
         vec = [self.rv, progress, lat, h_err] + look + [hrx, hry, hrvx, hrvy, risk]
         if c.get("normalize_obs", False):
-            lat_s, pos_s, vel_s, ms, mv = _obs_normalization_scales(c)
+            lat_s, pos_s, vel_s, ms, mv = obs_normalization_scales(c)
             vec[0] = float(vec[0]) / mv
             vec[2] = float(vec[2]) / lat_s
             vec[3] = float(vec[3]) / np.pi
@@ -764,7 +797,7 @@ def run_full_demo(
     seed: int = 42,
     render: bool = True,
     save_video: str | None = None,
-    use_hybrid: bool = True,
+    policy_mode: str = "hybrid",
 ) -> dict:
     """Run a complete start-to-goal demonstration.
 
@@ -774,22 +807,35 @@ def run_full_demo(
         config: Optional config dict overrides.
         seed: Random seed.
         render: Whether to display live rendering.
-        save_video: Path to save video file (e.g. "full_run.gif").
-        use_hybrid: If True and rl_model is provided, use HybridPolicy.
+        save_video: Path to save video file (e.g. "full_run.gif"). Relative paths
+            are resolved under Evaluation_video/full_run/ at project root;
+            absolute paths are used as given.
+        policy_mode: "hybrid" | "path" | "stop_corridor".
+            - hybrid: HybridPolicy (requires rl_model)
+            - path: pure path following
+            - stop_corridor: stop when human is in corridor, resume after leaving
 
     Returns:
         Dict with run summary (steps, goal_reached, encounter_results).
     """
     env = FullRunEnv(config=config, render_mode="human" if render else None)
     if save_video:
+        save_video = _resolve_save_video_path(save_video)
+        os.makedirs(os.path.dirname(os.path.abspath(save_video)), exist_ok=True)
         env.start_recording()
 
     obs, info = env.reset(seed=seed)
 
     policy = None
-    if rl_model is not None and use_hybrid:
-        policy = HybridPolicy(rl_model, env, follow_lookahead=3)
-        policy.reset()
+    mode = str(policy_mode).lower()
+    if mode == "hybrid":
+        if rl_model is not None:
+            policy = rl_model
+        else:
+            print("policy=hybrid requires --model; fallback to policy=path")
+            mode = "path"
+    elif mode not in {"path", "stop_corridor"}:
+        raise ValueError(f"Unknown policy_mode: {policy_mode}")
 
     n_enc = len(env.cfg.get("encounters", []))
     print(
@@ -797,12 +843,51 @@ def run_full_demo(
         f"encounters={n_enc}"
     )
 
+    def should_use_rl(env) -> bool:
+        if not env._human_visible:
+            return False
+
+        c = env.cfg
+
+        cr, sr = np.cos(env.rtheta), np.sin(env.rtheta)
+        dx = env.hx - env.rx
+        dy = env.hy - env.ry
+
+        h_forward = cr * dx + sr * dy
+        h_lateral = -sr * dx + cr * dy
+
+        in_trigger_range = (
+            h_forward > -c.get("rl_trigger_behind_dist", 0.5)
+            and h_forward < c.get("rl_trigger_forward_dist", 7.0)
+            and abs(h_lateral) < c.get("rl_trigger_lateral_dist", 2.2)
+        )
+
+        return in_trigger_range
+
     done = False
+    stopped_last_step = False
     while not done:
         if policy is not None:
-            action, state = policy.predict(obs, deterministic=True)
+            if should_use_rl(env):
+                action, state = rl_model.predict(obs, deterministic=True)
+            else:
+                action = obs_to_path_goal(obs, env.cfg, lookahead_idx=3)
+        elif mode == "stop_corridor":
+            human_in_corridor = (
+                env._human_visible and env._in_corridor(env.hx, env.hy)
+            )
+            if human_in_corridor:
+                action = np.array([0.0, 0.0], dtype=np.float32)
+                if not stopped_last_step:
+                    print("  Stop policy: human entered corridor -> robot stop")
+                stopped_last_step = True
+            else:
+                action = obs_to_path_goal(obs, env.cfg, lookahead_idx=3)
+                if stopped_last_step:
+                    print("  Stop policy: human left corridor -> robot resume")
+                stopped_last_step = False
         else:
-            action = _obs_to_path_goal(obs, env.cfg, lookahead_idx=3)
+            action = obs_to_path_goal(obs, env.cfg, lookahead_idx=3)
 
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
@@ -882,13 +967,20 @@ if __name__ == "__main__":
     pa = argparse.ArgumentParser(description="Full run simulator demo")
     pa.add_argument("--no-render", action="store_true")
     pa.add_argument("--save-video", type=str, default=None, metavar="PATH",
-                    help="Save full run video (e.g. full_run.gif)")
-    pa.add_argument("--path-length", type=float, default=60.0)
+                    help="Save full run video; relative PATH -> Evaluation_video/full_run/PATH")
+    pa.add_argument("--path-length", type=float, default=50.0)
     pa.add_argument("--seed", type=int, default=42)
     pa.add_argument("--model", type=str, default=None,
                     help="Path to trained RL model (.zip)")
     pa.add_argument("--algo", type=str, default="sac", choices=["ppo", "sac"],
                     help="RL algorithm used for the model")
+    pa.add_argument(
+        "--policy",
+        type=str,
+        default="hybrid",
+        choices=["hybrid", "path", "stop_corridor"],
+        help="Control policy: hybrid | path | stop_corridor",
+    )
     args = pa.parse_args()
 
     cfg = {"path_length": args.path_length}
@@ -905,4 +997,5 @@ if __name__ == "__main__":
         seed=args.seed,
         render=not args.no_render,
         save_video=args.save_video,
+        policy_mode=args.policy,
     )

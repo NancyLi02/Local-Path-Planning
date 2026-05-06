@@ -56,6 +56,13 @@ class LocalPlannerEnv(gym.Env):
         success_hdg_thresh=0.1,
         oob_margin=2.0,
         human_delay=2.0,
+        human_exists_from_start=True,
+        human_detection_len=8.0,
+        human_detection_w=1.8,
+        cross_start_dist_range=(3.0, 5.0),
+        cross_s_range=(3.0, 7.0),
+        cross_angle_jitter=0.35,
+        use_state_machine=True,
         p_ambient_human=0.0,
         normalize_obs=True,
         return_reward_breakdown=False,
@@ -94,6 +101,10 @@ class LocalPlannerEnv(gym.Env):
         self._goals: list[np.ndarray] = []
 
         self._human_visible = False
+        self._human_exists = False
+        self._human_observable = False
+        self._rl_active = False
+        self._encounter_active = False
         self._human_appear_step = int(round(self.cfg["human_delay"] / self.cfg["dt"]))
         self._ep_min_d_human = float("inf")
         self._prev_abs_lat = 0.0
@@ -217,7 +228,68 @@ class LocalPlannerEnv(gym.Env):
 
     def _activate_human(self) -> None:
         self._spawn_human(self.np_random)
+        self._human_exists = True
+        self._human_observable = True
         self._human_visible = True
+        self._encounter_active = False
+
+    def _in_detection_zone(self, px: float, py: float) -> bool:
+        c = self.cfg
+        s_lo = self.cur_s
+        s_hi = min(
+            self.cur_s + c.get("human_detection_len", c["corridor_len"]),
+            self.path.total_length,
+        )
+        mid = (s_lo + s_hi) / 2
+        rad = (s_hi - s_lo) / 2 + 1.0
+        s_cl, _, dist = self.path.closest_point(px, py, s_hint=mid, search_radius=rad)
+        if s_cl < s_lo - 0.3 or s_cl > s_hi + 0.3:
+            return False
+        return dist < c.get("human_detection_w", c["corridor_w"])
+
+    def _path_follow_action(self, lookahead_idx: int = 3) -> np.ndarray:
+        c = self.cfg
+        lookahead_s = min(
+            self.cur_s + lookahead_idx * c["lookahead_spacing"],
+            self.path.total_length,
+        )
+        target = self.path.position(lookahead_s)
+        dx = target[0] - self.rx
+        dy = target[1] - self.ry
+        cr, sr = np.cos(self.rtheta), np.sin(self.rtheta)
+        fwd = cr * dx + sr * dy
+        lat = -sr * dx + cr * dy
+        action = np.array([fwd, lat], dtype=np.float32)
+        return np.clip(action, self.action_space.low, self.action_space.high)
+
+    def _spawn_human_crossing_from_outside(self, rng: np.random.Generator) -> None:
+        c = self.cfg
+        speed = float(rng.uniform(*c["human_speed_range"]))
+
+        s_lo, s_hi = c.get("cross_s_range", (3.0, 7.0))
+        enc_s = self.cur_s + float(rng.uniform(s_lo, s_hi))
+        enc_s = min(enc_s, self.path.total_length - 2.0)
+
+        enc_pos = self.path.position(enc_s)
+        nrm = self.path.normal(enc_s)
+        side = -1.0 if rng.random() < c.get("human_from_below_prob", 0.5) else 1.0
+
+        d_min, d_max = c.get("cross_start_dist_range", (3.0, 5.0))
+        start_dist = float(rng.uniform(d_min, d_max))
+
+        d = -side * nrm
+        jitter = float(c.get("cross_angle_jitter", 0.35))
+        ang = float(rng.uniform(-jitter, jitter))
+        ca, sa = np.cos(ang), np.sin(ang)
+        d = np.array([
+            d[0] * ca - d[1] * sa,
+            d[0] * sa + d[1] * ca,
+        ])
+
+        start = enc_pos + side * nrm * start_dist
+        self.hx, self.hy = float(start[0]), float(start[1])
+        self.hvx, self.hvy = float(d[0] * speed), float(d[1] * speed)
+        self._h_behav = "cross"
 
     def _update_progress(self) -> None:
         s_new, _, _ = self.path.closest_point(
@@ -298,7 +370,7 @@ class LocalPlannerEnv(gym.Env):
         info: dict = {}
         terminated = truncated = collision = success = False
 
-        if self._human_visible:
+        if self._human_exists:
             dh = np.hypot(self.rx - self.hx, self.ry - self.hy)
             if dh < c["collision_dist"]:
                 terminated, collision = True, True
@@ -320,7 +392,7 @@ class LocalPlannerEnv(gym.Env):
             on_path = False
             human_clear = False
 
-        if on_path and human_clear and self.steps > self._human_appear_step + 10:
+        if self._encounter_active and on_path and human_clear and self.steps > self._human_appear_step + 10:
             terminated, success = True, True
             info["success"] = True
             return terminated, truncated, collision, success, info
@@ -356,10 +428,22 @@ class LocalPlannerEnv(gym.Env):
         self.rx, self.ry, self.rtheta = float(p[0]), float(p[1]), h
         self.rv = 0.0
 
-        self._human_visible = False
         self._human_appear_step = int(round(self.cfg["human_delay"] / self.cfg["dt"]))
-        self.hx, self.hy, self.hvx, self.hvy = 0.0, 0.0, 0.0, 0.0
-        self._h_behav = ""
+        if self.cfg.get("human_exists_from_start", True):
+            self._spawn_human_crossing_from_outside(rng)
+            self._human_exists = True
+            self._human_observable = False
+            self._human_visible = False
+            self._rl_active = False
+            self._encounter_active = False
+        else:
+            self._human_exists = False
+            self._human_observable = False
+            self._human_visible = False
+            self._rl_active = False
+            self._encounter_active = False
+            self.hx, self.hy, self.hvx, self.hvy = 0.0, 0.0, 0.0, 0.0
+            self._h_behav = ""
 
         self.steps = 0
         self._ep_min_d_human = float("inf")
@@ -377,11 +461,23 @@ class LocalPlannerEnv(gym.Env):
         self.steps += 1
         old_s = self.cur_s
 
-        if not self._human_visible and self.steps >= self._human_appear_step:
-            self._activate_human()
+        if not self.cfg.get("human_exists_from_start", True):
+            if (not self._human_exists) and self.steps >= self._human_appear_step:
+                self._activate_human()
+                self._human_exists = True
+                self._human_observable = True
+                self._human_visible = True
+                self._rl_active = True
 
-        action = np.asarray(action, dtype=np.float32)
-        action = np.clip(action, self.action_space.low, self.action_space.high)
+        raw_rl_action = np.asarray(action, dtype=np.float32)
+        raw_rl_action = np.clip(raw_rl_action, self.action_space.low, self.action_space.high)
+        if self.cfg.get("use_state_machine", True):
+            if self._rl_active:
+                action = raw_rl_action
+            else:
+                action = self._path_follow_action(lookahead_idx=3)
+        else:
+            action = raw_rl_action
         fwd, lat = float(action[0]), float(action[1])
 
         cr, sr = np.cos(self.rtheta), np.sin(self.rtheta)
@@ -405,9 +501,14 @@ class LocalPlannerEnv(gym.Env):
         self.rtheta = wrap_angle(self.rtheta + w * dt)
         self.rv = v
 
-        if self._human_visible:
+        if self._human_exists:
             self.hx += self.hvx * dt
             self.hy += self.hvy * dt
+            self._human_observable = self._in_detection_zone(self.hx, self.hy)
+            if self._in_corridor(self.hx, self.hy):
+                self._encounter_active = True
+            self._human_visible = self._human_observable
+            self._rl_active = self._human_observable
             self._htraj.append(np.array([self.hx, self.hy]))
             dh_step = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
             self._ep_min_d_human = min(self._ep_min_d_human, dh_step)
@@ -420,7 +521,7 @@ class LocalPlannerEnv(gym.Env):
         obs = self._obs()
 
         info["step"] = self.steps
-        if self._human_visible:
+        if self._human_observable:
             info["behavior"] = self._h_behav
 
         if c.get("return_reward_breakdown"):
@@ -443,7 +544,7 @@ class LocalPlannerEnv(gym.Env):
             )
 
             human_clear_end = False
-            if self._human_visible:
+            if self._human_exists:
                 dh_e = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
                 cr, sr = np.cos(self.rtheta), np.sin(self.rtheta)
                 h_ahead = cr * (self.hx - self.rx) + sr * (self.hy - self.ry)

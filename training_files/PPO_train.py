@@ -128,7 +128,7 @@ REWARD_CFG = {
     "w_speed": 2.0,
     "w_time": -1.0,
     "w_success": 100.0,
-    "w_return_path": 10.0,
+    "w_return_path": 15.0,
     "path_pen_min": 0.1,
     "path_pen_restore_dist": 2.0,
 }
