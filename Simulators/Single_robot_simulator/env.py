@@ -59,9 +59,10 @@ class LocalPlannerEnv(gym.Env):
         human_exists_from_start=True,
         human_detection_len=8.0,
         human_detection_w=1.8,
-        cross_start_dist_range=(3.0, 5.0),
-        cross_s_range=(3.0, 7.0),
-        cross_angle_jitter=0.35,
+        # start closer the path, cross ahead of the robot
+        cross_start_dist_range=(0.9, 1.8),
+        cross_s_range=(2.5, 5.5),
+        cross_angle_jitter=0.25,
         use_state_machine=True,
         p_ambient_human=0.0,
         normalize_obs=True,
@@ -104,6 +105,7 @@ class LocalPlannerEnv(gym.Env):
         self._human_exists = False
         self._human_observable = False
         self._rl_active = False
+        self._rl_latched = False
         self._encounter_active = False
         self._human_appear_step = int(round(self.cfg["human_delay"] / self.cfg["dt"]))
         self._ep_min_d_human = float("inf")
@@ -433,14 +435,14 @@ class LocalPlannerEnv(gym.Env):
             self._spawn_human_crossing_from_outside(rng)
             self._human_exists = True
             self._human_observable = False
-            self._human_visible = False
             self._rl_active = False
+            self._rl_latched = False
             self._encounter_active = False
         else:
             self._human_exists = False
             self._human_observable = False
-            self._human_visible = False
             self._rl_active = False
+            self._rl_latched = False
             self._encounter_active = False
             self.hx, self.hy, self.hvx, self.hvy = 0.0, 0.0, 0.0, 0.0
             self._h_behav = ""
@@ -451,6 +453,10 @@ class LocalPlannerEnv(gym.Env):
         self._rtraj = [np.array([self.rx, self.ry])]
         self._htraj = []
         self._goals = []
+        if self._human_exists:
+            self._human_visible = False
+        else:
+            self._human_visible = False
 
         obs = self._obs()
         info = {"behavior": "pending"}
@@ -468,6 +474,7 @@ class LocalPlannerEnv(gym.Env):
                 self._human_observable = True
                 self._human_visible = True
                 self._rl_active = True
+                self._rl_latched = True
 
         raw_rl_action = np.asarray(action, dtype=np.float32)
         raw_rl_action = np.clip(raw_rl_action, self.action_space.low, self.action_space.high)
@@ -507,8 +514,11 @@ class LocalPlannerEnv(gym.Env):
             self._human_observable = self._in_detection_zone(self.hx, self.hy)
             if self._in_corridor(self.hx, self.hy):
                 self._encounter_active = True
-            self._human_visible = self._human_observable
-            self._rl_active = self._human_observable
+            # Show human when near the path (detection zone or corridor)
+            self._human_visible = self._human_observable or self._encounter_active
+            if self._human_observable:
+                self._rl_latched = True
+            self._rl_active = self._rl_latched
             self._htraj.append(np.array([self.hx, self.hy]))
             dh_step = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
             self._ep_min_d_human = min(self._ep_min_d_human, dh_step)

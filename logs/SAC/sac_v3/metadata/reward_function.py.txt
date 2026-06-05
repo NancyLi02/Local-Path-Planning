@@ -1,0 +1,2 @@
+    def _reward_terms(self, old_s: float, collision: bool, success: bool) -> dict[str, float]:
+        return compute_reward_terms(self, old_s, collision, success)

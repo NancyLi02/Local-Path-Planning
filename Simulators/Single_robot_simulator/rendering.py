@@ -156,7 +156,11 @@ def render_env(env):
         ax.plot(g[0], g[1], "mx", ms=12, mew=3, label="Local goal")
 
     ax.legend(loc="upper right", fontsize=8)
-    ax.set_title(f"Step {env.steps}  |  v={env.rv:.2f} m/s  |  {env._h_behav}")
+    elapsed_s = env.steps * c["dt"]
+    ax.set_title(
+        f"t = {elapsed_s:.1f} s  |  Step {env.steps}  |  "
+        f"v={env.rv:.2f} m/s  |  {env._h_behav}"
+    )
 
     if env.render_mode == "human":
         env._fig.canvas.draw_idle()
@@ -214,9 +218,10 @@ def show_result(env, tag: str, ret: float, steps: int, wait: bool = True):
         fontsize=28, fontweight="bold", color="white",
         bbox=dict(boxstyle="round,pad=0.4", fc=color, alpha=0.85),
     )
+    elapsed_s = steps * env.cfg["dt"]
     ax.text(
         0.5, 0.82,
-        f"steps = {steps}    return = {ret:.1f}",
+        f"time = {elapsed_s:.1f} s    steps = {steps}    return = {ret:.1f}",
         transform=ax.transAxes, ha="center", va="top",
         fontsize=14, color="#333333",
         bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.75),

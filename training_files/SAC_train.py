@@ -40,7 +40,10 @@ EVALUATION
     python SAC_train.py --name sac_v1 --eval --render
 
 6. Evaluate and save GIF videos:
-    python SAC_train.py --name sac_v1 --eval --save-video
+    python SAC_train.py --name sac_v2 --eval --save-video
+
+7. Evaluate best checkpoint and save GIF videos:
+    python SAC_train.py --name sac_v3 --eval --use-best --save-video
 
 Videos saved to:
     Evaluation_video/SAC/sac_v1/
@@ -65,7 +68,7 @@ REWARD DEBUGGING
 ====================================================
 
 9. Run reward audit before training:
-    python SAC_train.py --name sac_v1 --reward-audit
+    python SAC_train.py --name sac_v3 --reward-audit
 
 
 ====================================================
