@@ -10,11 +10,13 @@ import numpy as np
 try:
     from .controller import PurePursuitController
     from .path import ReferencePath, obs_normalization_scales, wrap_angle
+    from .policies import obs_to_path_goal
     from .rendering import close_render, render_env, start_recording, stop_recording
     from .reward import compute_reward, compute_reward_terms
 except ImportError:
     from controller import PurePursuitController
     from path import ReferencePath, obs_normalization_scales, wrap_angle
+    from policies import obs_to_path_goal
     from rendering import close_render, render_env, start_recording, stop_recording
     from reward import compute_reward, compute_reward_terms
 
@@ -34,7 +36,7 @@ class LocalPlannerEnv(gym.Env):
         init_v=0.6,
         human_radius=0.3,
         human_speed_range=(0.1, 0.3),
-        collision_dist=0.6,
+        collision_dist=0.7,
         safety_dist=1.5,
         corridor_len=8.0,
         corridor_w=1.8,
@@ -44,9 +46,9 @@ class LocalPlannerEnv(gym.Env):
         lookahead_spacing=1.0,
         w_collision=-200.0,
         w_safety=-5.0,
-        w_deviation=-10,
-        w_heading=-2.0,
-        w_progress=40,
+        w_deviation=-10, #decrease: -8
+        w_heading=-2.0, #maybe decrease: -1.5
+        w_progress=40, #increase: 50
         w_speed=2.0,
         w_time=-0.5,
         w_success=100,
@@ -59,10 +61,25 @@ class LocalPlannerEnv(gym.Env):
         human_exists_from_start=True,
         human_detection_len=8.0,
         human_detection_w=1.8,
-        # start closer the path, cross ahead of the robot
-        cross_start_dist_range=(0.9, 1.8),
         cross_s_range=(2.5, 5.5),
-        cross_angle_jitter=0.25,
+        cross_angle_jitter=0.45,
+        cross_appear_dist_default=7.0,
+        cross_time_scale=0.78,
+        cross_start_dist_min=2.0,
+        path_follow_min_dist=0.5,
+        path_follow_max_dist=0.7,
+        human_outside_corridor_margin=0.35,
+        use_encounter_spawn=True,
+        validate_blocking_encounters=True,
+        encounter_validation="tune",
+        encounter_validate_max_tries=10,
+        encounter_accept_max_dist=0.75,
+        encounter_reject_max_steps=55,
+        encounter_reject_time_scale_samples=8,
+        encounter_reject_appear_samples=4,
+        encounter_accept_min_dist=None,
+        encounter_tune_attempts=3,
+        encounter_tune_max_steps=80,
         use_state_machine=True,
         p_ambient_human=0.0,
         normalize_obs=True,
@@ -98,6 +115,7 @@ class LocalPlannerEnv(gym.Env):
         self._h_behav = "cross"
 
         self._rtraj: list[np.ndarray] = []
+        self._gtraj: list[np.ndarray] = []
         self._htraj: list[np.ndarray] = []
         self._goals: list[np.ndarray] = []
 
@@ -109,6 +127,12 @@ class LocalPlannerEnv(gym.Env):
         self._encounter_active = False
         self._human_appear_step = int(round(self.cfg["human_delay"] / self.cfg["dt"]))
         self._ep_min_d_human = float("inf")
+        self._ep_min_d_path_following = float("inf")
+        self._pending_encounter: dict | None = None
+        self._active_cross_s = 0.0
+        self._ghost_rx = self._ghost_ry = self._ghost_rtheta = self._ghost_rv = 0.0
+        self._ghost_cur_s = 0.0
+        self._ghost_visible = False
         self._prev_abs_lat = 0.0
 
         self._fig = None
@@ -264,40 +288,341 @@ class LocalPlannerEnv(gym.Env):
         action = np.array([fwd, lat], dtype=np.float32)
         return np.clip(action, self.action_space.low, self.action_space.high)
 
-    def _spawn_human_crossing_from_outside(self, rng: np.random.Generator) -> None:
+    def _lateral_dist_to_path(self, px: float, py: float, s_hint: float) -> float:
+        _, _, dist = self.path.closest_point(px, py, s_hint=s_hint, search_radius=8.0)
+        return float(dist)
+
+    def _build_random_encounter(self, rng: np.random.Generator) -> dict:
+        """Build a draft crossing encounter dict (full-run style parameters)."""
         c = self.cfg
         speed = float(rng.uniform(*c["human_speed_range"]))
-
-        s_lo, s_hi = c.get("cross_s_range", (3.0, 7.0))
-        enc_s = self.cur_s + float(rng.uniform(s_lo, s_hi))
-        enc_s = min(enc_s, self.path.total_length - 2.0)
-
-        enc_pos = self.path.position(enc_s)
-        nrm = self.path.normal(enc_s)
+        s_lo, s_hi = c.get("cross_s_range", (2.5, 5.5))
+        s_enc = self.cur_s + float(rng.uniform(s_lo, s_hi))
+        s_enc = min(s_enc, self.path.total_length - 2.0)
         side = -1.0 if rng.random() < c.get("human_from_below_prob", 0.5) else 1.0
+        jitter_max = float(c.get("cross_angle_jitter", 0.45))
+        cross_angle = float(rng.uniform(-jitter_max, jitter_max))
+        return {
+            "s": float(s_enc),
+            "behavior": "cross",
+            "speed": speed,
+            "side": side,
+            "cross_angle": cross_angle,
+            "appear_distance": float(c.get("cross_appear_dist_default", 7.0)),
+            "time_scale": float(c.get("cross_time_scale", 0.78)),
+        }
 
-        d_min, d_max = c.get("cross_start_dist_range", (3.0, 5.0))
-        start_dist = float(rng.uniform(d_min, d_max))
+    def _encounter_validation_mode(self) -> str:
+        """How encounters are validated on reset: ``none``, ``reject``, or ``tune``."""
+        mode = self.cfg.get("encounter_validation")
+        if mode is not None:
+            return str(mode).lower()
+        legacy = self.cfg.get("validate_blocking_encounters", True)
+        if legacy == "reject":
+            return "reject"
+        if legacy:
+            return "tune"
+        return "none"
 
-        d = -side * nrm
-        jitter = float(c.get("cross_angle_jitter", 0.35))
-        ang = float(rng.uniform(-jitter, jitter))
+    def _reject_sample_blocking_encounter(self, rng: np.random.Generator) -> dict:
+        """Resample random encounters until a short path-only check passes."""
+        c = self.cfg
+        max_tries = int(c.get("encounter_validate_max_tries", 10))
+        accept_max = float(c.get("encounter_accept_max_dist", 0.75))
+        accept_min = c.get("encounter_accept_min_dist")
+        if accept_min is not None:
+            accept_min = float(accept_min)
+        tune_seed = int(rng.integers(0, 2**31 - 1))
+        ts_samples = int(c.get("encounter_reject_time_scale_samples", 8))
+
+        best: dict | None = None
+        best_m = float("inf")
+
+        for attempt in range(max_tries):
+            draft = self._build_random_encounter(rng)
+            fast = _fast_time_scale_search(
+                draft,
+                c,
+                seed=tune_seed + attempt * 100,
+                start_cur_s=self.cur_s,
+                accept_max=accept_max,
+                accept_min=accept_min,
+                n_samples=ts_samples,
+            )
+            if fast is not None:
+                return fast
+            result = simulate_path_only_encounter(
+                draft,
+                {**c, "encounter_tune_max_steps": c.get("encounter_reject_max_steps", 55),
+                 "validate_blocking_encounters": False},
+                seed=tune_seed + attempt,
+                start_cur_s=self.cur_s,
+            )
+            m = float(result["min_dist_path_following"])
+            if m < best_m:
+                best_m = m
+                best = draft
+
+        if best is not None:
+            return best
+
+        lo = accept_min if accept_min is not None else 0.0
+        raise RuntimeError(
+            f"Could not sample a blocking encounter in {max_tries} reject attempts "
+            f"(accept: {lo} <= min_dist < {accept_max} m, best seen {best_m:.2f} m)"
+        )
+
+    def _build_and_tune_random_encounter(self, rng: np.random.Generator) -> dict:
+        """Build a crossing encounter; optionally validate via reject sampling or tuning."""
+        mode = self._encounter_validation_mode()
+        if mode == "none":
+            return self._build_random_encounter(rng)
+        if mode == "reject":
+            return self._reject_sample_blocking_encounter(rng)
+
+        max_attempts = int(self.cfg.get("encounter_tune_attempts", 3))
+        tune_seed = int(rng.integers(0, 2**31 - 1))
+        angle_max = float(self.cfg.get("cross_angle_jitter", 0.45))
+
+        last_draft: dict | None = None
+        carry: dict | None = None
+        for attempt in range(max_attempts):
+            draft = carry if carry is not None else self._build_random_encounter(rng)
+            carry = None
+            last_draft = draft
+            tuned = tune_blocking_encounter(
+                draft,
+                self.cfg,
+                seed=tune_seed + attempt * 97,
+                start_cur_s=self.cur_s,
+            )
+            if tuned is not None:
+                return tuned
+
+            carry = dict(draft)
+            carry["s"] = max(
+                self.cur_s + 2.0,
+                float(carry["s"]) - float(rng.uniform(0.3, 0.8)),
+            )
+            carry["speed"] = min(
+                float(self.cfg["human_speed_range"][1]),
+                float(carry["speed"]) + float(rng.uniform(0.02, 0.06)),
+            )
+            carry["cross_angle"] = float(rng.uniform(-angle_max, angle_max))
+
+        speed_hi = float(self.cfg["human_speed_range"][1])
+        s_candidates = np.linspace(self.cur_s + 1.8, self.cur_s + 6.0, 8)
+        for s_enc in s_candidates:
+            s_val = float(np.clip(s_enc, self.cur_s + 1.2, self.path.total_length - 2.0))
+            for side in (1.0, -1.0):
+                draft = {
+                    "s": s_val,
+                    "behavior": "cross",
+                    "speed": speed_hi,
+                    "side": float(side),
+                    "cross_angle": float(rng.uniform(-angle_max, angle_max)),
+                    "appear_distance": float(self.cfg.get("cross_appear_dist_default", 7.0)),
+                    "time_scale": float(self.cfg.get("cross_time_scale", 0.78)),
+                }
+                tuned = tune_blocking_encounter(
+                    draft,
+                    self.cfg,
+                    seed=tune_seed + int(1000 * s_val) + int(side * 10),
+                    start_cur_s=self.cur_s,
+                )
+                if tuned is not None:
+                    return tuned
+
+        raise RuntimeError(
+            "Could not tune a blocking encounter for the single-robot scene "
+            f"(path_follow_dist=[{self.cfg.get('path_follow_min_dist', 0.5)}, "
+            f"{self.cfg.get('path_follow_max_dist', 0.7)}])"
+        )
+
+    def _spawn_encounter_human(self, enc: dict, cross_s: float | None = None) -> None:
+        """Spawn a pedestrian timed to cross the reference path ahead of the robot."""
+        c = self.cfg
+        s_enc = float(cross_s if cross_s is not None else enc["s"])
+        speed = float(enc.get("speed", 0.2))
+        side = float(enc.get("side", 1.0))
+
+        enc_pos = self.path.position(s_enc)
+        nrm = self.path.normal(s_enc)
+
+        if "cross_angle" in enc:
+            ang = float(enc["cross_angle"])
+        else:
+            jitter_max = float(c.get("cross_angle_jitter", 0.45))
+            ang = float(self.np_random.uniform(-jitter_max, jitter_max))
+
+        gap = max(s_enc - self.cur_s, 0.5)
+        v_r = max(self.rv, c.get("init_v", 0.6))
+        time_scale = float(enc.get("time_scale", c.get("cross_time_scale", 0.78)))
+        t_enc = gap / max(v_r, 0.1) * time_scale
+        start_min = float(c.get("cross_start_dist_min", 2.0))
+        start_dist = max(speed * t_enc, start_min)
+
         ca, sa = np.cos(ang), np.sin(ang)
+        d_base = -side * nrm
         d = np.array([
-            d[0] * ca - d[1] * sa,
-            d[0] * sa + d[1] * ca,
+            d_base[0] * ca - d_base[1] * sa,
+            d_base[0] * sa + d_base[1] * ca,
         ])
+        d = d / max(float(np.linalg.norm(d)), 1e-6)
 
-        start = enc_pos + side * nrm * start_dist
-        self.hx, self.hy = float(start[0]), float(start[1])
+        margin = float(c.get("human_outside_corridor_margin", 0.35))
+        min_lat = float(c["corridor_w"]) + margin
+        start_dist = max(speed * t_enc, start_min)
+        for _ in range(40):
+            start = enc_pos - d * start_dist
+            if self._lateral_dist_to_path(float(start[0]), float(start[1]), s_enc) >= min_lat:
+                break
+            start_dist += 0.3
+
+        start = enc_pos - d * start_dist
         self.hvx, self.hvy = float(d[0] * speed), float(d[1] * speed)
-        self._h_behav = "cross"
+        self.hx, self.hy = float(start[0]), float(start[1])
+        self._active_cross_s = s_enc
+        self._h_behav = enc.get("behavior", "cross")
+        self._human_exists = True
+        self._human_visible = False
+        self._encounter_active = False
+        self._ep_min_d_human = float("inf")
+        self._ep_min_d_path_following = float("inf")
+        self._ghost_visible = False
+        self._htraj = []
+
+    def _maybe_spawn_human(self) -> None:
+        if self._human_exists or self._pending_encounter is None:
+            return
+
+        enc = self._pending_encounter
+        cross_s = float(enc["s"])
+        appear_dist = float(
+            enc.get("appear_distance", self.cfg.get("cross_appear_dist_default", 7.0))
+        )
+        if self.cur_s >= cross_s - appear_dist:
+            self._spawn_encounter_human(enc, cross_s=cross_s)
+            self._pending_encounter = None
 
     def _update_progress(self) -> None:
         s_new, _, _ = self.path.closest_point(
             self.rx, self.ry, s_hint=self.cur_s, search_radius=5.0,
         )
         self.cur_s = max(self.cur_s, s_new)
+
+    def _obs_at(
+        self,
+        rx: float,
+        ry: float,
+        rtheta: float,
+        rv: float,
+        cur_s: float,
+    ) -> np.ndarray:
+        """Observation as if the robot were at the given state (shared human state)."""
+        saved = (self.rx, self.ry, self.rtheta, self.rv, self.cur_s)
+        self.rx, self.ry, self.rtheta, self.rv, self.cur_s = (
+            rx, ry, rtheta, rv, cur_s,
+        )
+        obs = self._obs()
+        self.rx, self.ry, self.rtheta, self.rv, self.cur_s = saved
+        return obs
+
+    def _step_path_follower(
+        self,
+        rx: float,
+        ry: float,
+        rtheta: float,
+        rv: float,
+        cur_s: float,
+    ) -> tuple[float, float, float, float, float]:
+        """Advance a virtual robot that only follows the reference path."""
+        c = self.cfg
+        obs = self._obs_at(rx, ry, rtheta, rv, cur_s)
+        action = obs_to_path_goal(obs, c, lookahead_idx=3)
+        fwd, lat = float(action[0]), float(action[1])
+
+        cr, sr = np.cos(rtheta), np.sin(rtheta)
+        goal = np.array([
+            rx + fwd * cr - lat * sr,
+            ry + fwd * sr + lat * cr,
+        ])
+
+        if abs(fwd) < 0.05 and abs(lat) < 0.05:
+            v_cmd, w_cmd = 0.0, 0.0
+        else:
+            v_cmd, w_cmd = self.controller.compute(rx, ry, rtheta, goal)
+
+        dt = c["dt"]
+        v = float(np.clip(v_cmd, 0, c["max_v"]))
+        w = float(np.clip(w_cmd, -c["max_omega"], c["max_omega"]))
+        rx = rx + v * np.cos(rtheta) * dt
+        ry = ry + v * np.sin(rtheta) * dt
+        rtheta = wrap_angle(rtheta + w * dt)
+        s_new, _, _ = self.path.closest_point(
+            rx, ry, s_hint=cur_s, search_radius=5.0,
+        )
+        cur_s = max(cur_s, s_new)
+        return rx, ry, rtheta, v, cur_s
+
+    def _is_on_path(self) -> bool:
+        c = self.cfg
+        _, lat, _ = self.path.closest_point(
+            self.rx, self.ry, s_hint=self.cur_s, search_radius=5.0,
+        )
+        h_err = abs(wrap_angle(self.rtheta - self.path.heading(self.cur_s)))
+        return (
+            abs(lat) < c["success_lat_thresh"]
+            and h_err < c["success_hdg_thresh"]
+        )
+
+    def _spawn_ghost_on_path(self) -> None:
+        """Spawn ghost at the on-path position where the robot began deviating."""
+        p = self.path.position(self.cur_s)
+        h = self.path.heading(self.cur_s)
+        self._ghost_rx = float(p[0])
+        self._ghost_ry = float(p[1])
+        self._ghost_rtheta = h
+        self._ghost_rv = self.rv
+        self._ghost_cur_s = self.cur_s
+        self._ghost_visible = True
+        self._gtraj = [np.array([self._ghost_rx, self._ghost_ry])]
+
+    def _hide_ghost(self) -> None:
+        self._ghost_visible = False
+
+    def _update_ghost(self) -> None:
+        """Show ghost only while robot is off-path during a human encounter."""
+        if not self._human_visible:
+            if self._ghost_visible:
+                self._hide_ghost()
+            return
+
+        on_path = self._is_on_path()
+
+        if not self._ghost_visible and not on_path:
+            self._spawn_ghost_on_path()
+
+        if self._ghost_visible:
+            self._ghost_rx, self._ghost_ry, self._ghost_rtheta, self._ghost_rv, self._ghost_cur_s = (
+                self._step_path_follower(
+                    self._ghost_rx,
+                    self._ghost_ry,
+                    self._ghost_rtheta,
+                    self._ghost_rv,
+                    self._ghost_cur_s,
+                )
+            )
+            self._gtraj.append(np.array([self._ghost_rx, self._ghost_ry]))
+            d_ghost = float(np.hypot(
+                self._ghost_rx - self.hx,
+                self._ghost_ry - self.hy,
+            ))
+            self._ep_min_d_path_following = min(
+                self._ep_min_d_path_following, d_ghost,
+            )
+            if on_path:
+                self._hide_ghost()
 
     # ------------------------
     # Observation
@@ -431,14 +756,31 @@ class LocalPlannerEnv(gym.Env):
         self.rv = 0.0
 
         self._human_appear_step = int(round(self.cfg["human_delay"] / self.cfg["dt"]))
+        use_encounter_spawn = self.cfg.get("use_encounter_spawn", True)
         if self.cfg.get("human_exists_from_start", True):
-            self._spawn_human_crossing_from_outside(rng)
-            self._human_exists = True
-            self._human_observable = False
-            self._rl_active = False
-            self._rl_latched = False
-            self._encounter_active = False
+            if use_encounter_spawn:
+                forced = self.cfg.get("forced_encounter")
+                if forced is not None:
+                    self._pending_encounter = dict(forced)
+                else:
+                    self._pending_encounter = self._build_and_tune_random_encounter(rng)
+                self._human_exists = False
+                self._human_observable = False
+                self._rl_active = False
+                self._rl_latched = False
+                self._encounter_active = False
+                self.hx, self.hy, self.hvx, self.hvy = 0.0, 0.0, 0.0, 0.0
+                self._h_behav = "cross"
+            else:
+                self._pending_encounter = None
+                self._spawn_human(rng)
+                self._human_exists = True
+                self._human_observable = False
+                self._rl_active = False
+                self._rl_latched = False
+                self._encounter_active = False
         else:
+            self._pending_encounter = None
             self._human_exists = False
             self._human_observable = False
             self._rl_active = False
@@ -449,23 +791,28 @@ class LocalPlannerEnv(gym.Env):
 
         self.steps = 0
         self._ep_min_d_human = float("inf")
+        self._ep_min_d_path_following = float("inf")
+        self._ghost_visible = False
         self._prev_abs_lat = 0.0
         self._rtraj = [np.array([self.rx, self.ry])]
+        self._gtraj = []
         self._htraj = []
         self._goals = []
-        if self._human_exists:
-            self._human_visible = False
-        else:
-            self._human_visible = False
+        self._human_visible = False
 
         obs = self._obs()
-        info = {"behavior": "pending"}
+        info = {"behavior": self._h_behav if self._h_behav else "pending"}
+        if self._pending_encounter is not None:
+            info["encounter"] = dict(self._pending_encounter)
         return obs, info
 
     def step(self, action):
         c = self.cfg
         self.steps += 1
         old_s = self.cur_s
+
+        if self.cfg.get("use_encounter_spawn", True):
+            self._maybe_spawn_human()
 
         if not self.cfg.get("human_exists_from_start", True):
             if (not self._human_exists) and self.steps >= self._human_appear_step:
@@ -511,21 +858,30 @@ class LocalPlannerEnv(gym.Env):
         if self._human_exists:
             self.hx += self.hvx * dt
             self.hy += self.hvy * dt
-            self._human_observable = self._in_detection_zone(self.hx, self.hy)
-            if self._in_corridor(self.hx, self.hy):
+            in_corridor = self._in_corridor(self.hx, self.hy)
+            if in_corridor:
                 self._encounter_active = True
-            # Show human when near the path (detection zone or corridor)
-            self._human_visible = self._human_observable or self._encounter_active
-            if self._human_observable:
-                self._rl_latched = True
-            self._rl_active = self._rl_latched
-            self._htraj.append(np.array([self.hx, self.hy]))
-            dh_step = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
-            self._ep_min_d_human = min(self._ep_min_d_human, dh_step)
+            if self.cfg.get("use_encounter_spawn", True):
+                if in_corridor and not self._human_visible:
+                    self._human_visible = True
+                    if self.cfg.get("use_state_machine", True):
+                        self._rl_latched = True
+                        self._rl_active = True
+            else:
+                self._human_observable = self._in_detection_zone(self.hx, self.hy)
+                self._human_visible = self._human_observable or self._encounter_active
+                if self._human_observable:
+                    self._rl_latched = True
+                self._rl_active = self._rl_latched
+            if self._human_visible:
+                self._htraj.append(np.array([self.hx, self.hy]))
+                dh_step = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
+                self._ep_min_d_human = min(self._ep_min_d_human, dh_step)
 
         self._rtraj.append(np.array([self.rx, self.ry]))
 
         self._update_progress()
+        self._update_ghost()
         terminated, truncated, collision, success, info = self._check_done()
         reward = self._reward(old_s, collision, success)
         obs = self._obs()
@@ -552,6 +908,11 @@ class LocalPlannerEnv(gym.Env):
                 if self._ep_min_d_human < float("inf")
                 else -1.0
             )
+            ep_min_ghost = (
+                float(self._ep_min_d_path_following)
+                if self._ep_min_d_path_following < float("inf")
+                else -1.0
+            )
 
             human_clear_end = False
             if self._human_exists:
@@ -569,9 +930,244 @@ class LocalPlannerEnv(gym.Env):
                 "collision": bool(collision),
                 "success": bool(success),
                 "min_human_dist": ep_min,
+                "min_ghost_dist": ep_min_ghost,
+                "min_dist_path_following": ep_min_ghost,
                 "final_abs_lateral": float(abs(lat_f)),
                 "on_path_at_end": bool(on_path_end),
                 "human_clear_at_end": bool(human_clear_end),
             }
 
         return obs, reward, terminated, truncated, info
+
+
+def _path_follow_dist_band(cfg: dict) -> tuple[float, float]:
+    lo = float(cfg.get("path_follow_min_dist", 0.5))
+    hi = float(cfg.get("path_follow_max_dist", 0.7))
+    return lo, hi
+
+
+def _encounter_dist_in_band(result: dict, cfg: dict) -> bool:
+    lo, hi = _path_follow_dist_band(cfg)
+    m = float(result.get("min_dist_path_following", float("inf")))
+    if not (lo <= m < hi):
+        return False
+    return bool(result.get("human_in_corridor")) and bool(result.get("crosses_in_front"))
+
+
+def _encounter_passes_reject(
+    result: dict,
+    *,
+    accept_max: float,
+    accept_min: float | None,
+) -> bool:
+    m = float(result.get("min_dist_path_following", float("inf")))
+    if not (result.get("human_in_corridor") and result.get("crosses_in_front")):
+        return False
+    if m >= accept_max:
+        return False
+    if accept_min is not None and m < accept_min:
+        return False
+    return True
+
+
+def _fast_time_scale_search(
+    encounter: dict,
+    cfg: dict,
+    *,
+    seed: int = 0,
+    start_cur_s: float | None = None,
+    accept_max: float = 0.75,
+    accept_min: float | None = None,
+    n_samples: int = 16,
+) -> dict | None:
+    """Coarse 1-D search over ``time_scale`` for a blocking encounter."""
+    check_cfg = dict(cfg)
+    check_cfg["validate_blocking_encounters"] = False
+    reject_steps = int(cfg.get("encounter_reject_max_steps", 55))
+    check_cfg["encounter_tune_max_steps"] = reject_steps
+
+    best: dict | None = None
+    best_m = float("inf")
+    for j, ts in enumerate(np.linspace(0.25, 1.25, max(n_samples, 2))):
+        candidate = {**encounter, "time_scale": float(ts)}
+        result = simulate_path_only_encounter(
+            candidate, check_cfg, seed=seed + j, start_cur_s=start_cur_s,
+        )
+        m = float(result["min_dist_path_following"])
+        if m < best_m:
+            best_m = m
+            best = candidate
+        if _encounter_passes_reject(
+            result, accept_max=accept_max, accept_min=accept_min,
+        ):
+            return candidate
+    if best is not None and best_m < accept_max:
+        return best
+    return None
+
+
+def simulate_path_only_encounter(
+    encounter: dict,
+    config: dict | None = None,
+    *,
+    seed: int = 0,
+    start_cur_s: float | None = None,
+    lookahead_idx: int = 3,
+) -> dict:
+    """Run one encounter with pure path-following; check if it blocks the robot."""
+    cfg = dict(LocalPlannerEnv.DEFAULT_CFG)
+    if config:
+        cfg.update(config)
+    cfg["forced_encounter"] = dict(encounter)
+    cfg["validate_blocking_encounters"] = False
+    cfg["cross_angle_jitter"] = 0.0
+    tune_steps = int(cfg.get("encounter_tune_max_steps", 80))
+    cfg["max_steps"] = min(int(cfg.get("max_steps", 200)), tune_steps)
+
+    env = LocalPlannerEnv(config=cfg)
+    obs, _ = env.reset(seed=seed)
+    if start_cur_s is not None:
+        p = env.path.position(start_cur_s)
+        h = env.path.heading(start_cur_s)
+        env.cur_s = float(start_cur_s)
+        env.rx, env.ry, env.rtheta = float(p[0]), float(p[1]), h
+
+    done = False
+    min_dist_corridor = float("inf")
+    min_dist_ghost = float("inf")
+    human_in_corridor = False
+    crosses_in_front = False
+    lo, hi = _path_follow_dist_band(cfg)
+    enc_s = float(encounter["s"])
+    info: dict = {}
+
+    while not done:
+        action = obs_to_path_goal(obs, env.cfg, lookahead_idx=lookahead_idx)
+        obs, _, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+
+        if env._human_exists and env._in_corridor(env.hx, env.hy):
+            human_in_corridor = True
+            dist = float(np.hypot(env.rx - env.hx, env.ry - env.hy))
+            min_dist_corridor = min(min_dist_corridor, dist)
+            cr, sr = np.cos(env.rtheta), np.sin(env.rtheta)
+            h_ahead = cr * (env.hx - env.rx) + sr * (env.hy - env.ry)
+            if h_ahead > 0.0:
+                crosses_in_front = True
+
+        if env._ghost_visible:
+            d_ghost = float(np.hypot(env._ghost_rx - env.hx, env._ghost_ry - env.hy))
+            min_dist_ghost = min(min_dist_ghost, d_ghost)
+
+        if env._ep_min_d_path_following < float("inf"):
+            min_dist_ghost = min(min_dist_ghost, env._ep_min_d_path_following)
+
+        min_pf = min(min_dist_corridor, min_dist_ghost)
+        if (
+            info.get("collision")
+            or info.get("success")
+            or env.cur_s > enc_s + 5.0
+            or (
+                human_in_corridor
+                and crosses_in_front
+                and lo <= min_pf < hi
+                and env.cur_s > enc_s + 0.5
+            )
+        ):
+            done = True
+
+    min_path_follow = min(min_dist_corridor, min_dist_ghost)
+    blocking = (
+        lo <= min_path_follow < hi
+        and human_in_corridor
+        and crosses_in_front
+    )
+    return {
+        "blocking": blocking,
+        "collision": bool(info.get("collision")),
+        "human_in_corridor": human_in_corridor,
+        "crosses_in_front": crosses_in_front,
+        "min_dist_corridor": min_dist_corridor,
+        "min_dist_ghost": min_dist_ghost,
+        "min_dist_path_following": min_path_follow,
+    }
+
+
+def tune_blocking_encounter(
+    enc: dict,
+    cfg: dict,
+    *,
+    seed: int = 0,
+    start_cur_s: float | None = None,
+) -> dict | None:
+    """Search timing so path-following min distance lands in [path_follow_min, path_follow_max]."""
+    lo, hi = _path_follow_dist_band(cfg)
+    target = 0.5 * (lo + hi)
+    tune_cfg = dict(cfg)
+    tune_cfg["encounter_tune_max_steps"] = cfg.get("encounter_tune_max_steps", 80)
+    rng = np.random.default_rng(seed)
+    s0 = float(enc.get("s", 4.0))
+    speed0 = float(enc.get("speed", 0.25))
+    side0 = float(enc.get("side", 1.0))
+    ang0 = float(enc.get("cross_angle", 0.0))
+
+    speed_lo, speed_hi = tune_cfg.get("human_speed_range", (0.1, 0.3))
+    path_len = float(tune_cfg.get("map_size", 20.0)) - 2.0
+    if start_cur_s is not None:
+        s_lo = float(start_cur_s) + 1.0
+    else:
+        s_lo = max(0.5, s0 - 2.0)
+    s_hi = min(path_len, s0 + 2.2)
+    angle_lim = max(float(cfg.get("cross_angle_jitter", 0.45)), 0.45)
+
+    best: dict | None = None
+    best_err = float("inf")
+
+    # Deterministic coarse pass near the provided draft.
+    for appear in (3.0, 4.5, 6.0, 7.5, 9.0):
+        for scale in (0.35, 0.50, 0.65, 0.80, 0.95):
+            candidate = {
+                **enc,
+                "s": float(np.clip(s0, s_lo, s_hi)),
+                "speed": float(np.clip(speed0, speed_lo, speed_hi)),
+                "side": side0,
+                "cross_angle": float(np.clip(ang0, -angle_lim, angle_lim)),
+                "appear_distance": float(appear),
+                "time_scale": float(scale),
+            }
+            result = simulate_path_only_encounter(
+                candidate, tune_cfg, seed=seed, start_cur_s=start_cur_s,
+            )
+            if not _encounter_dist_in_band(result, cfg):
+                continue
+            err = abs(float(result["min_dist_path_following"]) - target)
+            if err < best_err:
+                best_err = err
+                best = candidate
+                if err < 0.01:
+                    return best
+
+    # Randomized pass to ensure angle and crossing variety.
+    for _ in range(80):
+        candidate = {
+            **enc,
+            "s": float(rng.uniform(s_lo, s_hi)),
+            "speed": float(rng.uniform(speed_lo, speed_hi)),
+            "side": float(side0 if rng.random() < 0.7 else -side0),
+            "cross_angle": float(rng.uniform(-angle_lim, angle_lim)),
+            "appear_distance": float(rng.uniform(2.5, 10.0)),
+            "time_scale": float(rng.uniform(0.30, 1.20)),
+        }
+        result = simulate_path_only_encounter(
+            candidate, tune_cfg, seed=seed, start_cur_s=start_cur_s,
+        )
+        if not _encounter_dist_in_band(result, cfg):
+            continue
+        err = abs(float(result["min_dist_path_following"]) - target)
+        if err < best_err:
+            best_err = err
+            best = candidate
+            if err < 0.01:
+                return best
+
+    return best

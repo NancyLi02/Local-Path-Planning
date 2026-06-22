@@ -12,7 +12,7 @@ try:
         slow_on_path_action,
         stop_and_wait_action,
     )
-    from .rendering import result_tag, show_result
+    from .rendering import format_episode_stats, result_tag, show_result
 except ImportError:
     from env import LocalPlannerEnv
     from policies import (
@@ -23,7 +23,7 @@ except ImportError:
         slow_on_path_action,
         stop_and_wait_action,
     )
-    from rendering import result_tag, show_result
+    from rendering import format_episode_stats, result_tag, show_result
 
 
 def _run_single_episode(env, action_fn, render: bool = True) -> tuple[dict, float]:
@@ -39,6 +39,14 @@ def _run_single_episode(env, action_fn, render: bool = True) -> tuple[dict, floa
         env.render()
 
     return info, ret
+
+
+def _print_episode_result(info: dict, ret: float, tag: str) -> None:
+    line = f"    steps={info['step']}, return={ret:.1f}, result={tag}"
+    es = info.get("episode_stats")
+    if es:
+        line += f"\n    {format_episode_stats(es)}"
+    print(line)
 
 
 def demo_random(episodes: int = 3, render: bool = True, save_video: str | None = None):
@@ -61,8 +69,8 @@ def demo_random(episodes: int = 3, render: bool = True, save_video: str | None =
             env.render()
 
         tag = result_tag(info)
-        print(f"    steps={info['step']}, return={ret:.1f}, result={tag}")
-        show_result(env, tag, ret, info["step"], wait=render)
+        _print_episode_result(info, ret, tag)
+        show_result(env, tag, ret, info["step"], info=info, wait=render)
 
     if save_video:
         env.stop_recording(save_video)
@@ -87,8 +95,8 @@ def demo_follow_path(render: bool = True, save_video: str | None = None):
         env.render()
 
     tag = result_tag(info)
-    print(f"steps={info['step']}, return={ret:.1f}, result={tag}")
-    show_result(env, tag, ret, info["step"], wait=render)
+    _print_episode_result(info, ret, tag)
+    show_result(env, tag, ret, info["step"], info=info, wait=render)
 
     if save_video:
         env.stop_recording(save_video)
@@ -113,8 +121,8 @@ def demo_reactive_avoid(render: bool = True, save_video: str | None = None):
         env.render()
 
     tag = result_tag(info)
-    print(f"steps={info['step']}, return={ret:.1f}, result={tag}")
-    show_result(env, tag, ret, info["step"], wait=render)
+    _print_episode_result(info, ret, tag)
+    show_result(env, tag, ret, info["step"], info=info, wait=render)
 
     if save_video:
         env.stop_recording(save_video)
@@ -139,8 +147,8 @@ def demo_dodge_behind(render: bool = True, save_video: str | None = None):
         env.render()
 
     tag = result_tag(info)
-    print(f"steps={info['step']}, return={ret:.1f}, result={tag}")
-    show_result(env, tag, ret, info["step"], wait=render)
+    _print_episode_result(info, ret, tag)
+    show_result(env, tag, ret, info["step"], info=info, wait=render)
 
     if save_video:
         env.stop_recording(save_video)
@@ -165,8 +173,8 @@ def demo_stop_and_wait(render: bool = True, save_video: str | None = None):
         env.render()
 
     tag = result_tag(info)
-    print(f"steps={info['step']}, return={ret:.1f}, result={tag}")
-    show_result(env, tag, ret, info["step"], wait=render)
+    _print_episode_result(info, ret, tag)
+    show_result(env, tag, ret, info["step"], info=info, wait=render)
 
     if save_video:
         env.stop_recording(save_video)
@@ -191,8 +199,8 @@ def demo_slow_on_path(render: bool = True, save_video: str | None = None):
         env.render()
 
     tag = result_tag(info)
-    print(f"steps={info['step']}, return={ret:.1f}, result={tag}")
-    show_result(env, tag, ret, info["step"], wait=render)
+    _print_episode_result(info, ret, tag)
+    show_result(env, tag, ret, info["step"], info=info, wait=render)
 
     if save_video:
         env.stop_recording(save_video)
