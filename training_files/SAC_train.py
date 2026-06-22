@@ -7,6 +7,7 @@ USAGE EXAMPLES
 ====================================================
 
 1. Train a new SAC model:
+    python training_files/SAC_train.py --name sac_v4
     python SAC_train.py --name sac_v1
 
 This creates:
@@ -43,7 +44,7 @@ EVALUATION
     python SAC_train.py --name sac_v2 --eval --save-video
 
 7. Evaluate best checkpoint and save GIF videos:
-    python SAC_train.py --name sac_v3 --eval --use-best --save-video
+    python training_files/SAC_train.py --name sac_v4 --eval --use-best --save-video
 
 Videos saved to:
     Evaluation_video/SAC/sac_v1/
@@ -113,6 +114,7 @@ if _repo_root_str not in sys.path:
     sys.path.insert(0, _repo_root_str)
 
 from Simulators.Single_robot_simulator import LocalPlannerEnv, HybridPolicy
+from Simulators.Single_robot_simulator.rendering import format_episode_stats, show_result
 
 SAC_ROOT = _REPO_ROOT / "logs" / "SAC"
 SAC_VIDEO_ROOT = _REPO_ROOT / "Evaluation_video" / "SAC"
@@ -125,6 +127,12 @@ HYBRID_VIDEO_ROOT = _REPO_ROOT / "Evaluation_video" / "Hybrid_SAC"
 
 BASE_ENV_CFG = {
     "normalize_obs": True,
+    "encounter_validation": "reject",
+    "encounter_validate_max_tries": 5,
+    "encounter_accept_max_dist": 0.75,
+    "encounter_reject_max_steps": 55,
+    "encounter_reject_time_scale_samples": 12,
+    "validate_blocking_encounters": False,
 }
 
 REWARD_CFG = {
@@ -424,16 +432,12 @@ def evaluate(args):
         es = info.get("episode_stats", {})
         extra = ""
         if es:
-            extra = (
-                f"  min_d={es.get('min_human_dist', -1):.2f} "
-                f"|lat|={es.get('final_abs_lateral', -1):.2f} "
-                f"on_path={es.get('on_path_at_end')} "
-                f"h_clear={es.get('human_clear_at_end')}"
-            )
+            extra = f"  {format_episode_stats(es)}"
 
         print(f"  ep {ep + 1}: {tag}  steps={info['step']}  return={ret:.1f}  {extra}")
 
         if save_video:
+            show_result(env, tag, ret, info["step"], info=info, wait=False)
             vid_path = vid_dir / f"eval_ep{ep + 1}_{tag.lower()}.gif"
             env.stop_recording(str(vid_path))
 
@@ -514,16 +518,12 @@ def evaluate_hybrid(args):
         es = info.get("episode_stats", {})
         extra = ""
         if es:
-            extra = (
-                f"  min_d={es.get('min_human_dist', -1):.2f} "
-                f"|lat|={es.get('final_abs_lateral', -1):.2f} "
-                f"on_path={es.get('on_path_at_end')} "
-                f"h_clear={es.get('human_clear_at_end')}"
-            )
+            extra = f"  {format_episode_stats(es)}"
 
         print(f"  ep {ep + 1}: {tag}  steps={info['step']}  return={ret:.1f}  {extra}")
 
         if save_video:
+            show_result(env, tag, ret, info["step"], info=info, wait=False)
             vid_path = vid_dir / f"eval_ep{ep + 1}_{tag.lower()}.gif"
             env.stop_recording(str(vid_path))
 
