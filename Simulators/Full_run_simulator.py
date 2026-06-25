@@ -28,13 +28,13 @@ Examples:
 
     Random seed generation:
     python3 Simulators/Full_run_simulator.py \
-  --model logs/SAC/sac_v4/sac_v4.zip \
+  --model logs/SAC/sac_v7/sac_v7.zip \
   --algo sac \
   --seed $RANDOM \
-  --save-video fr_sacv4.gif
+  --save-video fr_sacv7_1.gif
 
 5. Longer route:
-    python3 Simulators/Full_run_simulator.py --model logs/SAC/sac_v2/sac_v2.zip --algo sac --path-length 80 --save-video fr_sacv2_r7.gif
+    python3 Simulators/Full_run_simulator.py --model logs/SAC/sac_v4/sac_v4.zip --algo sac --path-length 80 --save-video fr_sacv4_t2.gif
 
 6. Validate blocking encounter test suite (25 cases):
     python3 Simulators/Full_run_simulator.py --validate-encounters
@@ -113,11 +113,30 @@ _FULL_RUN_DEFAULT_CFG: dict = dict(
     init_v=0.6,
     max_steps=1200,
     human_radius=0.3,
-    human_speed_range=(0.1, 0.3),
+    # Kept at the single-robot training simulator's upper bound so the obs velocity
+    # normalization stays identical to training (vel_s = max_v + human_speed_range[1]
+    # = 2.0). Do NOT lower this just to slow humans down -- it would rescale the
+    # human-velocity observation channel away from what the policy was trained on.
+    # It only drives normalization now; actual speeds come from the walk/jog bands below.
+    human_speed_range=(0.3, 1.0),
+    # Actual pedestrian crossing speed. Most humans walk (below the robot's ~0.7 cruise);
+    # a minority jog (up to the robot's max_v = 1.0). So a human is usually slower than
+    # the AMR and only occasionally as fast as it. Decoupled from human_speed_range so
+    # obs normalization is unaffected.
+    human_walk_speed_range=(0.3, 0.6),
+    human_jog_speed_range=(0.7, 1.0),
+    human_jog_prob=0.2,
     collision_dist=0.7,
     safety_dist=1.5,
     corridor_len=8.0,
     corridor_w=1.8,
+    # Primary, distance-based replanning trigger shared with the single-robot
+    # training simulator: SAC takes over once the human is within this straight-line
+    # distance and hands back once it leaves. Keep this equal to the single-robot
+    # env's human_detect_radius so kick-in behaviour is consistent across both sims.
+    human_detect_radius=7.0,
+    # Legacy forward/lateral trigger box, used only as a fallback if
+    # human_detect_radius is set to None.
     rl_trigger_forward_dist=7.0,
     rl_trigger_lateral_dist=2.2,
     rl_trigger_behind_dist=0.5,
@@ -479,6 +498,24 @@ def _random_crossing_positions(
     return positions
 
 
+def _sample_walkjog_speed(rng, cfg: dict) -> float:
+    """Sample a pedestrian speed: usually a walk, occasionally a jog.
+
+    With probability ``human_jog_prob`` the speed is drawn from ``human_jog_speed_range``
+    (the faster, can-match-the-AMR case); otherwise from ``human_walk_speed_range`` (the
+    common, slower-than-the-AMR case). Falls back to ``human_speed_range`` if the walk/jog
+    bands are absent.
+    """
+    walk = cfg.get("human_walk_speed_range")
+    jog = cfg.get("human_jog_speed_range")
+    if walk is None or jog is None:
+        lo, hi = cfg.get("human_speed_range", (0.1, 0.3))
+        return float(rng.uniform(lo, hi))
+    jog_prob = float(cfg.get("human_jog_prob", 0.2))
+    band = jog if rng.random() < jog_prob else walk
+    return float(rng.uniform(float(band[0]), float(band[1])))
+
+
 def build_random_encounters(
     path_length: float,
     cfg: dict | None,
@@ -494,7 +531,6 @@ def build_random_encounters(
     c["path_length"] = path_length
 
     count = int(n if n is not None else c.get("encounter_count", 6))
-    speed_lo, speed_hi = c.get("human_speed_range", (0.1, 0.3))
     angle_max = float(c.get("cross_angle_jitter", 0.45))
     collision_dist = float(c.get("collision_dist", 0.7))
 
@@ -505,7 +541,7 @@ def build_random_encounters(
     for i, s in enumerate(positions):
         tuned: dict | None = None
         for attempt in range(24):
-            speed = float(rng.uniform(speed_lo, speed_hi))
+            speed = _sample_walkjog_speed(rng, c)
             side = float(rng.choice([1.0, -1.0]))
             cross_angle = float(rng.uniform(-angle_max, angle_max))
             draft = build_blocking_encounter(
@@ -988,8 +1024,41 @@ class FullRunEnv(gym.Env):
             and h_err < c["success_hdg_thresh"]
         )
 
+    def _rl_engaged(self) -> bool:
+        """True when the human is detected within sensing range (SAC takes over).
+
+        This is the same condition the demo runner uses to hand control to the
+        SAC policy, so it marks the exact moment the model comes into action --
+        before the robot starts to deviate from the path or slow down.
+
+        Replanning is gated purely on the straight-line distance to the human
+        (``human_detect_radius``), identical to the single-robot training
+        simulator, so the kick-in behaviour is consistent across both. The legacy
+        forward/lateral trigger box is kept as a fallback when no radius is set.
+        """
+        if not self._human_visible:
+            return False
+
+        c = self.cfg
+        radius = c.get("human_detect_radius")
+        if radius is not None:
+            d_rh = float(np.hypot(self.hx - self.rx, self.hy - self.ry))
+            return d_rh <= float(radius)
+
+        cr, sr = np.cos(self.rtheta), np.sin(self.rtheta)
+        dx = self.hx - self.rx
+        dy = self.hy - self.ry
+        h_forward = cr * dx + sr * dy
+        h_lateral = -sr * dx + cr * dy
+
+        return (
+            h_forward > -c.get("rl_trigger_behind_dist", 0.5)
+            and h_forward < c.get("rl_trigger_forward_dist", 7.0)
+            and abs(h_lateral) < c.get("rl_trigger_lateral_dist", 2.2)
+        )
+
     def _spawn_ghost_on_path(self) -> None:
-        """Spawn ghost at the on-path position where the robot began deviating."""
+        """Spawn ghost at the on-path position where the SAC policy took over."""
         p = self.path.position(self.cur_s)
         h = self.path.heading(self.cur_s)
         self._ghost_rx = float(p[0])
@@ -1004,37 +1073,38 @@ class FullRunEnv(gym.Env):
         self._ghost_visible = False
 
     def _update_ghost(self) -> None:
-        """Show ghost only while robot is off-path during a human encounter."""
-        if not self._human_visible:
+        """Show the no-replan ghost whenever the SAC policy is in control.
+
+        The ghost is the baseline robot that keeps following the straight-line
+        path (no replanning). It appears the moment the SAC model comes into
+        action -- before the robot starts to deviate or slow down -- so the two
+        can be compared, and disappears once SAC hands control back.
+        """
+        if not self._rl_engaged():
             if self._ghost_visible:
                 self._hide_ghost()
             return
 
-        on_path = self._is_on_path()
-
-        if not self._ghost_visible and not on_path:
+        if not self._ghost_visible:
             self._spawn_ghost_on_path()
 
-        if self._ghost_visible:
-            self._ghost_rx, self._ghost_ry, self._ghost_rtheta, self._ghost_rv, self._ghost_cur_s = (
-                self._step_path_follower(
-                    self._ghost_rx,
-                    self._ghost_ry,
-                    self._ghost_rtheta,
-                    self._ghost_rv,
-                    self._ghost_cur_s,
-                )
+        self._ghost_rx, self._ghost_ry, self._ghost_rtheta, self._ghost_rv, self._ghost_cur_s = (
+            self._step_path_follower(
+                self._ghost_rx,
+                self._ghost_ry,
+                self._ghost_rtheta,
+                self._ghost_rv,
+                self._ghost_cur_s,
             )
-            self._gtraj.append(np.array([self._ghost_rx, self._ghost_ry]))
-            d_ghost = float(np.hypot(
-                self._ghost_rx - self.hx,
-                self._ghost_ry - self.hy,
-            ))
-            self._ep_min_d_path_following = min(
-                self._ep_min_d_path_following, d_ghost,
-            )
-            if on_path:
-                self._hide_ghost()
+        )
+        self._gtraj.append(np.array([self._ghost_rx, self._ghost_ry]))
+        d_ghost = float(np.hypot(
+            self._ghost_rx - self.hx,
+            self._ghost_ry - self.hy,
+        ))
+        self._ep_min_d_path_following = min(
+            self._ep_min_d_path_following, d_ghost,
+        )
 
     def _obs(self) -> np.ndarray:
         c = self.cfg
@@ -1386,7 +1456,7 @@ class FullRunEnv(gym.Env):
             rt = np.array(self._rtraj)
             ax.plot(rt[:, 0], rt[:, 1], "g-", lw=2, alpha=0.7, label="Robot traj")
 
-        # Ghost (path-following) trajectory — only drawn while ghost was active
+        # Ghost (path-following) trajectory — drawn while SAC is in control
         if self._ghost_visible and len(self._gtraj) > 1:
             gt = np.array(self._gtraj)
             ax.plot(
@@ -1422,7 +1492,7 @@ class FullRunEnv(gym.Env):
             fill=False, ls="--", color="gold", alpha=0.4, zorder=9,
         ))
 
-        # Ghost robot — visible only while real robot is off-path during encounter
+        # Ghost robot — visible the whole time the SAC policy is in control
         if self._ghost_visible:
             ax.add_patch(plt.Circle(
                 (self._ghost_rx, self._ghost_ry), c["robot_radius"],
@@ -1584,25 +1654,7 @@ def run_full_demo(
     print(_format_encounter_summary(env.cfg.get("encounters", [])))
 
     def should_use_rl(env) -> bool:
-        if not env._human_visible:
-            return False
-
-        c = env.cfg
-
-        cr, sr = np.cos(env.rtheta), np.sin(env.rtheta)
-        dx = env.hx - env.rx
-        dy = env.hy - env.ry
-
-        h_forward = cr * dx + sr * dy
-        h_lateral = -sr * dx + cr * dy
-
-        in_trigger_range = (
-            h_forward > -c.get("rl_trigger_behind_dist", 0.5)
-            and h_forward < c.get("rl_trigger_forward_dist", 7.0)
-            and abs(h_lateral) < c.get("rl_trigger_lateral_dist", 2.2)
-        )
-
-        return in_trigger_range
+        return env._rl_engaged()
 
     done = False
     stopped_last_step = False

@@ -27,9 +27,11 @@ class LocalPlannerEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
 
     DEFAULT_CFG: dict = dict(
-        map_size=20.0,
+        map_size=24.0,         # ~19m reference path (was 20 -> 15m); keeps walk/jog
+                               # crossings nearer mid-path instead of bunched at the end.
         dt=0.1,
-        max_steps=200,
+        max_steps=260,         # scaled with the longer path (~175 steps full-speed
+                               # traversal) so detours around humans still reach the goal.
         robot_radius=0.3,
         max_v=1.0,
         max_omega=1.0,
@@ -46,11 +48,11 @@ class LocalPlannerEnv(gym.Env):
         lookahead_spacing=1.0,
         w_collision=-200.0,
         w_safety=-5.0,
-        w_deviation=-10, #decrease: -8
+        w_deviation=-8, #decrease: -8 --> old : -10
         w_heading=-2.0, #maybe decrease: -1.5
-        w_progress=40, #increase: 50
+        w_progress=50, #increase: 50 ---> old : 40
         w_speed=2.0,
-        w_time=-0.5,
+        w_time=-3.0, #old: -0.5
         w_success=100,
         path_pen_min=0.15,
         path_pen_restore_dist=3,
@@ -72,6 +74,23 @@ class LocalPlannerEnv(gym.Env):
         use_encounter_spawn=True,
         validate_blocking_encounters=True,
         encounter_validation="tune",
+        analytic_target_min=0.15,
+        analytic_target_max=0.55,
+        analytic_gap_min=3.5,          # crossing distance ahead (smaller = earlier)
+        analytic_gap_max=7.0,
+        analytic_spawn_lat_min=2.5,    # how far off the path the human starts/appears
+        analytic_spawn_lat_max=4.0,
+        analytic_angle_max=0.9,        # max crossing angle off perpendicular (~51 deg)
+        analytic_speed_min=0.3,        # hard clamp band for the derived crossing speed
+        analytic_speed_max=1.0,
+        # Pedestrian speed is sampled walk/jog, then the crossing geometry is solved for
+        # that speed (closed form, no rollout). Most humans walk (below the robot's ~0.8
+        # reference speed); a minority jog (up to the robot's max_v). So a human is usually
+        # slower than the AMR and only occasionally as fast as it.
+        human_walk_speed_range=(0.3, 0.6),
+        human_jog_speed_range=(0.7, 1.0),
+        human_jog_prob=0.2,
+        human_detect_radius=7.0,
         encounter_validate_max_tries=10,
         encounter_accept_max_dist=0.75,
         encounter_reject_max_steps=55,
@@ -292,6 +311,158 @@ class LocalPlannerEnv(gym.Env):
         _, _, dist = self.path.closest_point(px, py, s_hint=s_hint, search_radius=8.0)
         return float(dist)
 
+    @staticmethod
+    def _two_point_min_dist(
+        p0: np.ndarray, vrel: np.ndarray
+    ) -> tuple[float, float]:
+        """Closest approach of two constant-velocity points.
+
+        ``p0`` is the relative position (human - ghost) at t=0 and ``vrel`` the
+        relative velocity. Returns ``(min_dist, t_star)`` minimised over t >= 0.
+        """
+        vv = float(vrel[0] * vrel[0] + vrel[1] * vrel[1])
+        if vv < 1e-12:
+            return float(np.hypot(p0[0], p0[1])), 0.0
+        t = -float(p0[0] * vrel[0] + p0[1] * vrel[1]) / vv
+        if t < 0.0:
+            t = 0.0
+        return float(np.hypot(p0[0] + vrel[0] * t, p0[1] + vrel[1] * t)), t
+
+    def _cross_direction(self, s_enc: float, side: float, ang: float) -> np.ndarray:
+        """Unit travel direction of a crossing human (matches _spawn_encounter_human)."""
+        nrm = self.path.normal(s_enc)
+        ca, sa = float(np.cos(ang)), float(np.sin(ang))
+        d_base = -side * nrm
+        d = np.array([
+            d_base[0] * ca - d_base[1] * sa,
+            d_base[0] * sa + d_base[1] * ca,
+        ])
+        return d / max(float(np.linalg.norm(d)), 1e-6)
+
+    def _sample_walkjog_speed(
+        self, rng: np.random.Generator, spd_min: float, spd_max: float
+    ) -> tuple[float, float, float]:
+        """Sample a pedestrian speed: usually a walk, occasionally a jog.
+
+        Returns ``(speed, band_lo, band_hi)`` where the band is the walk or jog range the
+        speed was drawn from (clamped to ``[spd_min, spd_max]``), so the caller can keep
+        any small geometry-driven speed adjustment inside the same band. With probability
+        ``human_jog_prob`` the jog band is used (faster, can match the robot); otherwise
+        the walk band (slower than the robot's reference speed).
+        """
+        c = self.cfg
+        walk_lo, walk_hi = c.get("human_walk_speed_range", (0.3, 0.6))
+        jog_lo, jog_hi = c.get("human_jog_speed_range", (0.7, 1.0))
+        jog_prob = float(c.get("human_jog_prob", 0.2))
+        if rng.random() < jog_prob:
+            band_lo, band_hi = float(jog_lo), float(jog_hi)
+        else:
+            band_lo, band_hi = float(walk_lo), float(walk_hi)
+        band_lo = float(np.clip(band_lo, spd_min, spd_max))
+        band_hi = float(np.clip(band_hi, spd_min, spd_max))
+        if band_hi < band_lo:
+            band_hi = band_lo
+        return float(rng.uniform(band_lo, band_hi)), band_lo, band_hi
+
+    def _build_analytic_encounter(self, rng: np.random.Generator) -> dict:
+        """Build a crossing encounter guaranteed to be a path-following collision course.
+
+        The no-replan ghost follows the straight path at constant ``max_v``, and the
+        human moves at constant velocity, so their closest approach is the minimum
+        distance between two constant-velocity points (closed form). No rollout search
+        is performed, so this is ~1000x cheaper than the tuning / reject modes.
+
+        The human's *spawn geometry* is sampled directly so the scene can be shaped:
+
+        * ``analytic_spawn_lat_*`` -- how far off the path the human starts / appears,
+        * ``analytic_angle_max``   -- crossing angle off the perpendicular (variety),
+        * ``analytic_gap_*``       -- how far ahead it crosses (smaller = earlier, more
+                                      room for the robot to replan and recover).
+
+        Speed is sampled walk/jog (``_sample_walkjog_speed``) so most humans walk and a
+        minority jog, rather than speed being a free by-product of the geometry. The
+        crossing distance is then solved *for that speed*: because the dead-on speed is
+        ``start_dist*vg/gap``, choosing ``gap`` from the spawn-lat band makes the realized
+        speed equal the sampled value while the human still spawns outside the corridor.
+        A small sweep around that speed lands the closest approach in
+        ``[analytic_target_min, analytic_target_max] < collision_dist`` for variety. All
+        closed form -- no rollout / validation.
+        """
+        c = self.cfg
+        vg = max(float(c["max_v"]), 1e-6)
+        g0 = self.path.position(self.cur_s)
+        G0 = np.array([float(g0[0]), float(g0[1])])
+
+        lat_lo = float(c.get("analytic_spawn_lat_min", 2.5))
+        lat_hi = float(c.get("analytic_spawn_lat_max", 4.0))
+        ang_max = float(c.get("analytic_angle_max", 0.9))
+        gap_lo = float(c.get("analytic_gap_min", 3.5))
+        gap_hi = float(c.get("analytic_gap_max", 7.0))
+        spd_min = float(c.get("analytic_speed_min", 0.3))
+        spd_max = float(c.get("analytic_speed_max", 1.0))
+        tgt_lo = float(c.get("analytic_target_min", 0.15))
+        tgt_hi = float(c.get("analytic_target_max", 0.55))
+        gap_path = self.path.total_length - 2.0 - self.cur_s
+
+        ang = float(rng.uniform(-ang_max, ang_max))              # crossing angle (req 2)
+        side = -1.0 if rng.random() < float(c.get("human_from_below_prob", 0.5)) else 1.0
+        target = float(rng.uniform(tgt_lo, tgt_hi))
+        ca = max(float(np.cos(ang)), 1e-3)
+
+        # Walk/jog target speed: most humans walk, a minority jog.
+        s_target, band_lo, band_hi = self._sample_walkjog_speed(rng, spd_min, spd_max)
+
+        # Solve the crossing geometry for that speed. The dead-on speed is
+        # start_dist*vg/gap, and start_dist = lat/cos(ang), so a spawn offset ``lat`` is
+        # realized at speed s_target when gap = lat*vg/(s_target*cos(ang)). Turn the
+        # spawn-lat band (kept outside the corridor) into the matching gap band so the
+        # realized speed equals s_target while the human still starts off the path.
+        margin = float(c.get("human_outside_corridor_margin", 0.35))
+        lat_min = float(c["corridor_w"]) + margin
+        lat_des_lo = max(lat_lo, lat_min)
+        lat_des_hi = max(lat_hi, lat_des_lo)
+        gap_lo_eff = max(gap_lo, lat_des_lo * vg / (s_target * ca))
+        gap_hi_eff = min(gap_path, lat_des_hi * vg / (s_target * ca))
+        if gap_hi_eff < gap_lo_eff:
+            gap_hi_eff = gap_lo_eff
+        gap = float(rng.uniform(gap_lo_eff, gap_hi_eff))
+        s_enc = float(min(self.cur_s + gap, self.path.total_length - 2.0))
+        gap = float(s_enc - self.cur_s)                          # actual gap after clipping
+        t_contact = gap / vg
+        # start_dist that realizes s_target over this gap; never inside the corridor.
+        start_dist = max(s_target * gap / vg, lat_min / ca)
+
+        enc_pos = self.path.position(s_enc)
+        d = self._cross_direction(s_enc, side, ang)
+        H0 = enc_pos - d * start_dist  # fixed spawn point (offset ``lat`` from the path)
+
+        # speed0 == s_target by construction (dead-on => min-dist 0). Sweep a little around
+        # it -- staying inside the sampled walk/jog band -- so the closest approach lands in
+        # the target band for variety instead of always dead-centre.
+        speed0 = start_dist / max(t_contact, 1e-6)
+        s_lo = max(band_lo, 0.85 * speed0)
+        s_hi = min(band_hi, 1.15 * speed0)
+        if s_hi < s_lo:
+            s_lo, s_hi = band_lo, band_hi
+        best_speed, best_err = float(np.clip(speed0, band_lo, band_hi)), float("inf")
+        for sp in np.linspace(s_lo, s_hi, 40):
+            vrel = d * sp - np.array([vg, 0.0])
+            md, _ = self._two_point_min_dist(H0 - G0, vrel)
+            err = abs(md - target)
+            if err < best_err:
+                best_err, best_speed = err, float(sp)
+
+        return {
+            "s": s_enc,
+            "behavior": "cross",
+            "speed": float(np.clip(best_speed, band_lo, band_hi)),
+            "side": side,
+            "cross_angle": ang,
+            "appear_distance": float(gap + 2.0),
+            "start_dist": start_dist,
+            "explicit": True,
+        }
+
     def _build_random_encounter(self, rng: np.random.Generator) -> dict:
         """Build a draft crossing encounter dict (full-run style parameters)."""
         c = self.cfg
@@ -375,6 +546,8 @@ class LocalPlannerEnv(gym.Env):
     def _build_and_tune_random_encounter(self, rng: np.random.Generator) -> dict:
         """Build a crossing encounter; optionally validate via reject sampling or tuning."""
         mode = self._encounter_validation_mode()
+        if mode == "analytic":
+            return self._build_analytic_encounter(rng)
         if mode == "none":
             return self._build_random_encounter(rng)
         if mode == "reject":
@@ -455,13 +628,6 @@ class LocalPlannerEnv(gym.Env):
             jitter_max = float(c.get("cross_angle_jitter", 0.45))
             ang = float(self.np_random.uniform(-jitter_max, jitter_max))
 
-        gap = max(s_enc - self.cur_s, 0.5)
-        v_r = max(self.rv, c.get("init_v", 0.6))
-        time_scale = float(enc.get("time_scale", c.get("cross_time_scale", 0.78)))
-        t_enc = gap / max(v_r, 0.1) * time_scale
-        start_min = float(c.get("cross_start_dist_min", 2.0))
-        start_dist = max(speed * t_enc, start_min)
-
         ca, sa = np.cos(ang), np.sin(ang)
         d_base = -side * nrm
         d = np.array([
@@ -470,14 +636,25 @@ class LocalPlannerEnv(gym.Env):
         ])
         d = d / max(float(np.linalg.norm(d)), 1e-6)
 
-        margin = float(c.get("human_outside_corridor_margin", 0.35))
-        min_lat = float(c["corridor_w"]) + margin
-        start_dist = max(speed * t_enc, start_min)
-        for _ in range(40):
-            start = enc_pos - d * start_dist
-            if self._lateral_dist_to_path(float(start[0]), float(start[1]), s_enc) >= min_lat:
-                break
-            start_dist += 0.3
+        if enc.get("explicit"):
+            # Analytic placement already fixed the start distance; use it verbatim so
+            # the realized closest-approach matches the closed-form plan.
+            start_dist = float(enc["start_dist"])
+        else:
+            gap = max(s_enc - self.cur_s, 0.5)
+            v_r = max(self.rv, c.get("init_v", 0.6))
+            time_scale = float(enc.get("time_scale", c.get("cross_time_scale", 0.78)))
+            t_enc = gap / max(v_r, 0.1) * time_scale
+            start_min = float(c.get("cross_start_dist_min", 2.0))
+            start_dist = max(speed * t_enc, start_min)
+
+            margin = float(c.get("human_outside_corridor_margin", 0.35))
+            min_lat = float(c["corridor_w"]) + margin
+            for _ in range(40):
+                start = enc_pos - d * start_dist
+                if self._lateral_dist_to_path(float(start[0]), float(start[1]), s_enc) >= min_lat:
+                    break
+                start_dist += 0.3
 
         start = enc_pos - d * start_dist
         self.hvx, self.hvy = float(d[0] * speed), float(d[1] * speed)
@@ -577,7 +754,7 @@ class LocalPlannerEnv(gym.Env):
         )
 
     def _spawn_ghost_on_path(self) -> None:
-        """Spawn ghost at the on-path position where the robot began deviating."""
+        """Spawn ghost at the on-path position where the SAC policy took over."""
         p = self.path.position(self.cur_s)
         h = self.path.heading(self.cur_s)
         self._ghost_rx = float(p[0])
@@ -592,37 +769,38 @@ class LocalPlannerEnv(gym.Env):
         self._ghost_visible = False
 
     def _update_ghost(self) -> None:
-        """Show ghost only while robot is off-path during a human encounter."""
-        if not self._human_visible:
+        """Show the no-replan ghost whenever the SAC policy is in control.
+
+        The ghost is the baseline robot that keeps following the straight-line
+        path (no replanning). It appears the moment the SAC model comes into
+        action -- before the robot starts to deviate or slow down -- so the two
+        can be compared, and disappears once SAC hands control back.
+        """
+        if not self._rl_active:
             if self._ghost_visible:
                 self._hide_ghost()
             return
 
-        on_path = self._is_on_path()
-
-        if not self._ghost_visible and not on_path:
+        if not self._ghost_visible:
             self._spawn_ghost_on_path()
 
-        if self._ghost_visible:
-            self._ghost_rx, self._ghost_ry, self._ghost_rtheta, self._ghost_rv, self._ghost_cur_s = (
-                self._step_path_follower(
-                    self._ghost_rx,
-                    self._ghost_ry,
-                    self._ghost_rtheta,
-                    self._ghost_rv,
-                    self._ghost_cur_s,
-                )
+        self._ghost_rx, self._ghost_ry, self._ghost_rtheta, self._ghost_rv, self._ghost_cur_s = (
+            self._step_path_follower(
+                self._ghost_rx,
+                self._ghost_ry,
+                self._ghost_rtheta,
+                self._ghost_rv,
+                self._ghost_cur_s,
             )
-            self._gtraj.append(np.array([self._ghost_rx, self._ghost_ry]))
-            d_ghost = float(np.hypot(
-                self._ghost_rx - self.hx,
-                self._ghost_ry - self.hy,
-            ))
-            self._ep_min_d_path_following = min(
-                self._ep_min_d_path_following, d_ghost,
-            )
-            if on_path:
-                self._hide_ghost()
+        )
+        self._gtraj.append(np.array([self._ghost_rx, self._ghost_ry]))
+        d_ghost = float(np.hypot(
+            self._ghost_rx - self.hx,
+            self._ghost_ry - self.hy,
+        ))
+        self._ep_min_d_path_following = min(
+            self._ep_min_d_path_following, d_ghost,
+        )
 
     # ------------------------
     # Observation
@@ -862,11 +1040,22 @@ class LocalPlannerEnv(gym.Env):
             if in_corridor:
                 self._encounter_active = True
             if self.cfg.get("use_encounter_spawn", True):
-                if in_corridor and not self._human_visible:
+                detect_radius = c.get("human_detect_radius")
+                if detect_radius is not None:
+                    # Replan only while the human is within sensing range of the robot
+                    # (straight-line distance). Non-latched: control returns to the path
+                    # follower once the human leaves the range. This matches the full-run
+                    # simulator's trigger so the two stay consistent.
+                    d_rh = float(np.hypot(self.rx - self.hx, self.ry - self.hy))
+                    detected = d_rh <= float(detect_radius)
+                else:
+                    detected = in_corridor
+                if detected:
                     self._human_visible = True
-                    if self.cfg.get("use_state_machine", True):
+                if self.cfg.get("use_state_machine", True):
+                    if detected:
                         self._rl_latched = True
-                        self._rl_active = True
+                    self._rl_active = detected
             else:
                 self._human_observable = self._in_detection_zone(self.hx, self.hy)
                 self._human_visible = self._human_observable or self._encounter_active
