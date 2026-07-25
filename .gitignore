@@ -16,3 +16,6 @@ env/
 # Scratch / debug outputs (keep curated demos & showcases manually)
 outputs/*_debug*
 outputs/*_test.*
+
+# RL no-go table cache
+.cache/

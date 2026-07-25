@@ -87,6 +87,15 @@ class AMR:
         # "arrived, request next" message. None while en-route.
         self.request_frame: int | None = None
 
+        # ---- Step E spatial local-replanning state -----------------------
+        # While in a conflict cluster the AMR temporarily leaves its rail and
+        # moves freely in 2D (holonomic) toward a downstream rejoin point. In
+        # local mode ``xy`` is the true world position and ``progress`` is
+        # frozen at the entry arc-length; on reaching ``exit_s`` it snaps back.
+        self.local_mode: bool = False
+        self.xy: np.ndarray | None = None
+        self.exit_s: float | None = None
+
     def _densify_arclens(self, spacing: float) -> np.ndarray:
         """Arc-length positions of all QR waypoints (corners always kept)."""
         s_vals: list[float] = [0.0]
@@ -191,6 +200,28 @@ class AMR:
             self.granted_s,
             self.total_length,
         )
+
+    # ---- Step E spatial local-replanning -------------------------------
+    def current_xy(self) -> np.ndarray:
+        """World position: free 2D point in local mode, else rail position."""
+        if self.local_mode and self.xy is not None:
+            return self.xy.copy()
+        return self.position_at(self.progress)
+
+    def enter_local(self, exit_s: float) -> None:
+        """Leave the rail; start free 2D motion toward downstream ``exit_s``."""
+        self.local_mode = True
+        self.xy = self.position_at(self.progress)
+        self.exit_s = float(min(exit_s, self.total_length))
+
+    def resume_rail(self) -> None:
+        """Snap back onto the reference path at the rejoin arc-length."""
+        if self.exit_s is not None:
+            self.progress = float(min(self.exit_s, self.total_length))
+            self.granted_s = max(self.granted_s, self.progress)
+        self.local_mode = False
+        self.xy = None
+        self.exit_s = None
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,24 @@
+{
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "v0": {
+    "worker_collisions": 0.0,
+    "completion": 0.8,
+    "progress": 0.975578947368421,
+    "min_clearance": 0.5685029621189901,
+    "stop_ratio": 0.015651356672715465
+  },
+  "v1": {
+    "worker_collisions": 0.0,
+    "completion": 0.8333333333333334,
+    "progress": 0.9772624287231452,
+    "min_clearance": 0.5691008769051094,
+    "stop_ratio": 0.008670476846257278
+  },
+  "model": "logs/V1/v1_best.pt"
+}
