@@ -7,7 +7,7 @@ USAGE EXAMPLES
 ====================================================
 
 1. Train a new SAC model:
-    python training_files/SAC_train.py --name sac_v4
+    python training_files/SAC_train.py --name sac_v9
     python SAC_train.py --name sac_v1
 
 This creates:
@@ -44,7 +44,8 @@ EVALUATION
     python SAC_train.py --name sac_v2 --eval --save-video
 
 7. Evaluate best checkpoint and save GIF videos:
-    python training_files/SAC_train.py --name sac_v4 --eval --use-best --save-video
+    python training_files/SAC_train.py --name sac_v10 --eval --use-best --save-video
+    python SAC_train.py --name sac_v11 --eval --use-best --save-video
 
 Videos saved to:
     Evaluation_video/SAC/sac_v1/
@@ -125,27 +126,66 @@ HYBRID_VIDEO_ROOT = _REPO_ROOT / "Evaluation_video" / "Hybrid_SAC"
 # Environment config
 # ---------------------------------------------------------------------
 
+# Closed-form ("analytic") encounter generation: each human is placed directly on a
+# guaranteed path-following collision course (ghost min-dist in
+# [analytic_target_min, analytic_target_max] < collision_dist) using the constant-speed
+# straight-path geometry -- no rollout search. This makes reset() ~1000x faster than the
+# rollout-based "reject"/"tune" modes and guarantees ~100% of episodes would collide
+# without replanning.
+#
+# Scene shaping:
+#   - humans spawn / become visible farther off the path (analytic_spawn_lat_*,
+#     human_detect_radius) so the robot sees them earlier and has room to replan,
+#   - they cross at varied angles (analytic_angle_max), not just perpendicular,
+#   - they cross earlier (analytic_gap_*); the crossing speed is derived (and clamped to
+#     [analytic_speed_min, analytic_speed_max]) so the collision course is preserved.
+# human_speed_range upper bound is raised to match analytic_speed_max so obs velocity
+# normalization stays calibrated.
 BASE_ENV_CFG = {
     "normalize_obs": True,
-    "encounter_validation": "reject",
-    "encounter_validate_max_tries": 5,
-    "encounter_accept_max_dist": 0.75,
-    "encounter_reject_max_steps": 55,
-    "encounter_reject_time_scale_samples": 12,
+    # Longer reference path (~19m) so walk/jog crossings land nearer mid-path rather than
+    # bunched at the end; max_steps scaled with it so detours still reach the goal.
+    "map_size": 24.0,
+    "max_steps": 260,
+    "encounter_validation": "analytic",
+    "analytic_target_min": 0.15,
+    "analytic_target_max": 0.55,
+    "analytic_gap_min": 3.5,
+    "analytic_gap_max": 7.0,
+    "analytic_spawn_lat_min": 2.5,
+    "analytic_spawn_lat_max": 4.0,
+    "analytic_angle_max": 0.9,
+    "analytic_speed_min": 0.3,
+    "analytic_speed_max": 1.0,
+    "human_detect_radius": 7.0,
+    # human_speed_range only drives obs velocity normalization (vel_s = max_v + 1.0 = 2.0).
+    # Actual pedestrian speed is sampled walk/jog below: most humans walk (slower than the
+    # robot's ~0.8 reference speed), a minority jog (up to max_v). The analytic generator
+    # then solves the crossing geometry for that speed (closed form, no rollout).
+    "human_speed_range": (0.1, 1.0),
+    "human_walk_speed_range": (0.3, 0.6),
+    "human_jog_speed_range": (0.7, 1.0),
+    "human_jog_prob": 0.2,
     "validate_blocking_encounters": False,
 }
 
 REWARD_CFG = {
-    "reward_version": "r_v1",
+    "reward_version": "r_v4",
     "w_collision": -200.0,
     "w_safety": -20.0,
     "w_deviation": -5.0,
     "w_heading": -2.0,
-    "w_progress": 20.0,
+    "w_progress": 30.0,
     "w_speed": 2.0,
-    "w_time": -1.0,
+    "w_time": -3.0,
+    "w_idle": -6.0,  # baseline idle (no human visible)
+    "w_idle_encounter": -10.0,  # stronger idle during encounter outside bubble
+    "idle_speed_thresh": 0.25,
+    "idle_far_scale": 0.4,  # extra idle weight per safety_dist beyond bubble (cap below)
+    "idle_far_cap": 2.0,
+    "encounter_move_scale_inside": 0.35,  # attenuate progress/speed inside bubble
     "w_success": 150.0,
-    "w_return_path": 15.0,
+    "w_return_path": 40.0,  # r_v4: was 30; paired with safe-recovery gate in reward.py
     "path_pen_min": 0.1,
     "path_pen_restore_dist": 2.0,
 }

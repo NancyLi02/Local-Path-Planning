@@ -1,0 +1,20 @@
+{
+  "encounter_move_scale_inside": 0.35,
+  "idle_far_cap": 2.0,
+  "idle_far_scale": 0.4,
+  "idle_speed_thresh": 0.25,
+  "path_pen_min": 0.1,
+  "path_pen_restore_dist": 2.0,
+  "reward_version": "r_v4",
+  "w_collision": -200.0,
+  "w_deviation": -5.0,
+  "w_heading": -2.0,
+  "w_idle": -6.0,
+  "w_idle_encounter": -10.0,
+  "w_progress": 30.0,
+  "w_return_path": 40.0,
+  "w_safety": -20.0,
+  "w_speed": 2.0,
+  "w_success": 150.0,
+  "w_time": -3.0
+}

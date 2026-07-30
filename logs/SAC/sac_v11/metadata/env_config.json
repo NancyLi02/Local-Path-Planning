@@ -1,0 +1,196 @@
+{
+  "base_env_config": {
+    "analytic_angle_max": 0.9,
+    "analytic_gap_max": 7.0,
+    "analytic_gap_min": 3.5,
+    "analytic_spawn_lat_max": 4.0,
+    "analytic_spawn_lat_min": 2.5,
+    "analytic_speed_max": 1.0,
+    "analytic_speed_min": 0.3,
+    "analytic_target_max": 0.55,
+    "analytic_target_min": 0.15,
+    "encounter_validation": "analytic",
+    "human_detect_radius": 7.0,
+    "human_jog_prob": 0.2,
+    "human_jog_speed_range": [
+      0.7,
+      1.0
+    ],
+    "human_speed_range": [
+      0.1,
+      1.0
+    ],
+    "human_walk_speed_range": [
+      0.3,
+      0.6
+    ],
+    "map_size": 24.0,
+    "max_steps": 260,
+    "normalize_obs": true,
+    "validate_blocking_encounters": false
+  },
+  "eval_env_config": {
+    "analytic_angle_max": 0.9,
+    "analytic_gap_max": 7.0,
+    "analytic_gap_min": 3.5,
+    "analytic_spawn_lat_max": 4.0,
+    "analytic_spawn_lat_min": 2.5,
+    "analytic_speed_max": 1.0,
+    "analytic_speed_min": 0.3,
+    "analytic_target_max": 0.55,
+    "analytic_target_min": 0.15,
+    "encounter_jitter": [
+      0.92,
+      1.05
+    ],
+    "encounter_move_scale_inside": 0.35,
+    "encounter_t_range": [
+      2.0,
+      3.5
+    ],
+    "encounter_validation": "analytic",
+    "human_delay": 1.0,
+    "human_detect_radius": 7.0,
+    "human_from_below_prob": 0.5,
+    "human_jog_prob": 0.2,
+    "human_jog_speed_range": [
+      0.7,
+      1.0
+    ],
+    "human_speed_range": [
+      0.1,
+      1.0
+    ],
+    "human_walk_speed_range": [
+      0.3,
+      0.6
+    ],
+    "idle_far_cap": 2.0,
+    "idle_far_scale": 0.4,
+    "idle_speed_thresh": 0.25,
+    "map_size": 24.0,
+    "max_steps": 260,
+    "normalize_obs": true,
+    "p_ambient_human": 0.0,
+    "path_pen_min": 0.1,
+    "path_pen_restore_dist": 2.0,
+    "reward_version": "r_v4",
+    "validate_blocking_encounters": false,
+    "w_collision": -200.0,
+    "w_deviation": -5.0,
+    "w_heading": -2.0,
+    "w_idle": -6.0,
+    "w_idle_encounter": -10.0,
+    "w_progress": 30.0,
+    "w_return_path": 40.0,
+    "w_safety": -20.0,
+    "w_speed": 2.0,
+    "w_success": 150.0,
+    "w_time": -3.0
+  },
+  "eval_scene_config": {
+    "encounter_jitter": [
+      0.92,
+      1.05
+    ],
+    "encounter_t_range": [
+      2.0,
+      3.5
+    ],
+    "human_delay": 1.0,
+    "human_from_below_prob": 0.5,
+    "p_ambient_human": 0.0
+  },
+  "reward_config": {
+    "encounter_move_scale_inside": 0.35,
+    "idle_far_cap": 2.0,
+    "idle_far_scale": 0.4,
+    "idle_speed_thresh": 0.25,
+    "path_pen_min": 0.1,
+    "path_pen_restore_dist": 2.0,
+    "reward_version": "r_v4",
+    "w_collision": -200.0,
+    "w_deviation": -5.0,
+    "w_heading": -2.0,
+    "w_idle": -6.0,
+    "w_idle_encounter": -10.0,
+    "w_progress": 30.0,
+    "w_return_path": 40.0,
+    "w_safety": -20.0,
+    "w_speed": 2.0,
+    "w_success": 150.0,
+    "w_time": -3.0
+  },
+  "train_env_config": {
+    "analytic_angle_max": 0.9,
+    "analytic_gap_max": 7.0,
+    "analytic_gap_min": 3.5,
+    "analytic_spawn_lat_max": 4.0,
+    "analytic_spawn_lat_min": 2.5,
+    "analytic_speed_max": 1.0,
+    "analytic_speed_min": 0.3,
+    "analytic_target_max": 0.55,
+    "analytic_target_min": 0.15,
+    "encounter_jitter": [
+      0.9,
+      1.08
+    ],
+    "encounter_move_scale_inside": 0.35,
+    "encounter_t_range": [
+      2.0,
+      4.5
+    ],
+    "encounter_validation": "analytic",
+    "human_delay": 1.5,
+    "human_detect_radius": 7.0,
+    "human_from_below_prob": 0.5,
+    "human_jog_prob": 0.2,
+    "human_jog_speed_range": [
+      0.7,
+      1.0
+    ],
+    "human_speed_range": [
+      0.1,
+      1.0
+    ],
+    "human_walk_speed_range": [
+      0.3,
+      0.6
+    ],
+    "idle_far_cap": 2.0,
+    "idle_far_scale": 0.4,
+    "idle_speed_thresh": 0.25,
+    "map_size": 24.0,
+    "max_steps": 260,
+    "normalize_obs": true,
+    "p_ambient_human": 0.12,
+    "path_pen_min": 0.1,
+    "path_pen_restore_dist": 2.0,
+    "reward_version": "r_v4",
+    "validate_blocking_encounters": false,
+    "w_collision": -200.0,
+    "w_deviation": -5.0,
+    "w_heading": -2.0,
+    "w_idle": -6.0,
+    "w_idle_encounter": -10.0,
+    "w_progress": 30.0,
+    "w_return_path": 40.0,
+    "w_safety": -20.0,
+    "w_speed": 2.0,
+    "w_success": 150.0,
+    "w_time": -3.0
+  },
+  "train_scene_config": {
+    "encounter_jitter": [
+      0.9,
+      1.08
+    ],
+    "encounter_t_range": [
+      2.0,
+      4.5
+    ],
+    "human_delay": 1.5,
+    "human_from_below_prob": 0.5,
+    "p_ambient_human": 0.12
+  }
+}

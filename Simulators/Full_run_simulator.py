@@ -10,6 +10,9 @@ Logic:
     - Corridor membership is used as risk flag (risk=1 in corridor).
     - After the human leaves risk region and robot returns to path, path-following resumes.
     - Ends when robot reaches goal.
+    - A purple stop-and-wait ghost shadows every run as the baseline: it follows the
+      path, freezes while a pedestrian is a live conflict, and its reconstructed
+      time-to-goal plus the resulting efficiency gain land in report.md.
 
 Examples:
 
@@ -20,7 +23,7 @@ Examples:
     python3 Simulators/Full_run_simulator.py --model models/ppo.zip --algo ppo
 
 3. Test SAC:
-    python3 Simulators/Full_run_simulator.py --model models/sac.zip --algo sac
+    python3 Simulators/Full_run_simulator.py --model models/sac_v10.zip --algo sac
 
 4. Save video + report (creates Evaluation_video/full_run/<run_name>/ with gif + report.md):
     python3 Simulators/Full_run_simulator.py --model models/sac.zip --algo sac --save-video run.gif
@@ -28,13 +31,13 @@ Examples:
 
     Random seed generation:
     python3 Simulators/Full_run_simulator.py \
-  --model logs/SAC/sac_v7/sac_v7.zip \
+  --model logs/SAC/sac_v11/sac_v11.zip \
   --algo sac \
   --seed $RANDOM \
-  --save-video fr_sacv7_1.gif
+  --save-video fr_sacv11_4.gif
 
 5. Longer route:
-    python3 Simulators/Full_run_simulator.py --model logs/SAC/sac_v4/sac_v4.zip --algo sac --path-length 80 --save-video fr_sacv4_t2.gif
+    python3 Simulators/Full_run_simulator.py --model logs/SAC/sac_v10/sac_v10.zip --algo sac --path-length 80 --save-video fr_sacv10_t1.gif
 
 6. Validate blocking encounter test suite (25 cases):
     python3 Simulators/Full_run_simulator.py --validate-encounters
@@ -161,9 +164,13 @@ _FULL_RUN_DEFAULT_CFG: dict = dict(
     encounter_count=6,
     random_encounters=True,
     human_despawn_delay=15,
+    # Purple shadow robot that answers "how long would stop-and-wait have taken?"
+    # on every run. It shares the robot's pedestrians but never influences them.
+    stopwait_ghost=True,
     hallway_half_width=3.0,
     view_ahead=10.0,
     view_behind=6.0,
+    view_max_span=30.0,
     view_half_height=6.0,
     map_size=20.0,
 )
@@ -618,6 +625,52 @@ def _format_min_dist(value: float) -> str:
     return f"{value:.2f}"
 
 
+def _baseline_report_lines(baseline: dict | None) -> list[str]:
+    """Report section for the stop-and-wait ghost that shadows every full run."""
+    if not baseline:
+        return []
+
+    stopwait_s = baseline.get("stopwait_time_s")
+    if stopwait_s is None:
+        return [
+            "## Stop-and-Wait Baseline",
+            "",
+            "- **Status:** unavailable (the unobstructed reference never reached "
+            "the goal, so the run was too short to time)",
+            "",
+        ]
+
+    lines = [
+        "## Stop-and-Wait Baseline",
+        "",
+        f"- **Stop-and-wait time-to-goal:** {stopwait_s:.1f} s "
+        f"(unobstructed {baseline['freeflow_time_s']:.1f} s + "
+        f"{baseline['stopwait_wait_s']:.1f} s waiting)",
+        f"- **This policy's time-to-goal:** {baseline['policy_time_s']:.1f} s",
+    ]
+    improvement = baseline.get("improvement_pct")
+    if improvement is not None:
+        lines.append(
+            f"- **Navigation efficiency improvement:** {improvement:+.1f}%"
+        )
+
+    lines.extend([
+        "",
+        "The purple ghost follows the reference path and freezes whenever a "
+        "pedestrian comes within `human_detect_radius` -- the same trigger that "
+        "hands control to the RL policy, so the two differ only in how they "
+        "respond -- and resumes once the pedestrian has left its corridor. It is "
+        "re-placed at the robot's on-path position at the onset of every "
+        "encounter, so it meets each pedestrian with the robot's timing instead "
+        "of arriving after the crossing is over. A zero velocity command freezes "
+        "it in place and the controller is memoryless, so a stop-and-wait "
+        "traversal is the unobstructed traversal with pauses inserted: its "
+        "time-to-goal is the unobstructed time plus the time spent waiting.",
+        "",
+    ])
+    return lines
+
+
 def _write_run_report(
     report_path: str,
     *,
@@ -629,6 +682,7 @@ def _write_run_report(
     policy_mode: str,
     seed: int,
     video_path: str | None = None,
+    baseline: dict | None = None,
 ) -> str:
     elapsed_s = _elapsed_seconds(steps, dt)
     n_col = sum(1 for r in encounter_results if r["result"] == "collision")
@@ -684,6 +738,7 @@ def _write_run_report(
         "not replanned (distance to the ghost that continues on the reference path).",
         "",
     ])
+    lines.extend(_baseline_report_lines(baseline))
     content = "\n".join(lines)
     os.makedirs(os.path.dirname(os.path.abspath(report_path)), exist_ok=True)
     with open(report_path, "w", encoding="utf-8") as f:
@@ -747,6 +802,17 @@ class FullRunEnv(gym.Env):
         self._ghost_rx = self._ghost_ry = self._ghost_rtheta = self._ghost_rv = 0.0
         self._ghost_cur_s = 0.0
         self._ghost_visible = False
+        self._sw_rx = self._sw_ry = self._sw_rtheta = self._sw_rv = 0.0
+        self._sw_cur_s = 0.0
+        self._sw_visible = False
+        self._sw_stopped = False
+        self._sw_stopped_steps = 0
+        self._sw_seen_in_corridor = False
+        self._sw_released = False
+        self._sw_sync_enc = -1
+        self._ff_rx = self._ff_ry = self._ff_rtheta = self._ff_rv = 0.0
+        self._ff_cur_s = 0.0
+        self._ff_goal_step: int | None = None
         self.steps = 0
 
         self._human_visible = False
@@ -764,6 +830,7 @@ class FullRunEnv(gym.Env):
 
         self._rtraj: list[np.ndarray] = []
         self._gtraj: list[np.ndarray] = []
+        self._swtraj: list[np.ndarray] = []
         self._htraj: list[np.ndarray] = []
         self._goals: list[np.ndarray] = []
 
@@ -938,16 +1005,19 @@ class FullRunEnv(gym.Env):
     # Utility
     # ------------------------------------------------------------------
 
-    def _in_corridor(self, px: float, py: float) -> bool:
+    def _in_corridor_from(self, s_lo: float, px: float, py: float) -> bool:
+        """Corridor test for a robot sitting at arc-length ``s_lo``."""
         c = self.cfg
-        s_lo = self.cur_s
-        s_hi = min(self.cur_s + c["corridor_len"], self.path.total_length)
+        s_hi = min(s_lo + c["corridor_len"], self.path.total_length)
         mid = (s_lo + s_hi) / 2
         rad = (s_hi - s_lo) / 2 + 1.0
         s_cl, _, dist = self.path.closest_point(px, py, s_hint=mid, search_radius=rad)
         if s_cl < s_lo - 0.3 or s_cl > s_hi + 0.3:
             return False
         return dist < c["corridor_w"]
+
+    def _in_corridor(self, px: float, py: float) -> bool:
+        return self._in_corridor_from(self.cur_s, px, py)
 
     def _update_progress(self) -> None:
         s_new, _, _ = self.path.closest_point(
@@ -1105,6 +1175,149 @@ class FullRunEnv(gym.Env):
         self._ep_min_d_path_following = min(
             self._ep_min_d_path_following, d_ghost,
         )
+
+    # ------------------------------------------------------------------
+    # Stop-and-wait baseline ghost
+    # ------------------------------------------------------------------
+
+    def _sync_stopwait_to_robot(self) -> None:
+        """Re-place the stop-and-wait ghost at the robot's on-path position.
+
+        Done at the onset of every encounter. Without it the ghost would still be
+        behind from its previous wait, and each pedestrian -- spawned off the
+        robot's arc-length -- would have finished crossing before the ghost
+        arrived, so the baseline would never pay for the encounter.
+        """
+        p = self.path.position(self.cur_s)
+        self._sw_rx = float(p[0])
+        self._sw_ry = float(p[1])
+        self._sw_rtheta = self.path.heading(self.cur_s)
+        self._sw_rv = self.rv
+        self._sw_cur_s = self.cur_s
+        self._sw_visible = True
+        self._sw_stopped = False
+        self._sw_seen_in_corridor = False
+        self._sw_released = False
+        self._swtraj = [np.array([self._sw_rx, self._sw_ry])]
+
+    def _stopwait_blocked(self) -> bool:
+        """Whether the stop-and-wait ghost should be frozen this step.
+
+        It stops on the same condition that hands control to the RL policy (a
+        pedestrian inside ``human_detect_radius``) so the two policies differ only
+        in how they respond, and releases once the pedestrian has left its
+        corridor. The release latches: a pedestrian already walking away must not
+        be able to trigger a second wait.
+        """
+        if not self._human_visible:
+            return False
+
+        c = self.cfg
+        d = float(np.hypot(self.hx - self._sw_rx, self.hy - self._sw_ry))
+        radius = c.get("human_detect_radius")
+        if radius is None:
+            radius = c.get("rl_trigger_forward_dist", 7.0)
+        if d > float(radius):
+            return False
+
+        in_corridor = self._in_corridor_from(self._sw_cur_s, self.hx, self.hy)
+        if in_corridor:
+            self._sw_seen_in_corridor = True
+
+        cr, sr = np.cos(self._sw_rtheta), np.sin(self._sw_rtheta)
+        h_ahead = cr * (self.hx - self._sw_rx) + sr * (self.hy - self._sw_ry)
+        behind = h_ahead < 0.0
+        cleared = (not in_corridor) and (behind or d > c["safety_dist"] * 2)
+
+        # A pedestrian that has not reached the corridor yet is not "cleared" --
+        # it is still on its way in.
+        if cleared and (self._sw_seen_in_corridor or behind):
+            self._sw_released = True
+
+        return not self._sw_released
+
+    def _update_stopwait_ghost(self) -> None:
+        """Advance the purple stop-and-wait baseline by one step."""
+        if not self.cfg.get("stopwait_ghost", True):
+            return
+
+        if self._rl_engaged() and self._sw_sync_enc != self._encounter_idx:
+            self._sw_sync_enc = self._encounter_idx
+            self._sync_stopwait_to_robot()
+
+        self._sw_stopped = self._stopwait_blocked()
+        if self._sw_stopped:
+            self._sw_stopped_steps += 1
+            self._sw_rv = 0.0
+        else:
+            (
+                self._sw_rx,
+                self._sw_ry,
+                self._sw_rtheta,
+                self._sw_rv,
+                self._sw_cur_s,
+            ) = self._step_path_follower(
+                self._sw_rx,
+                self._sw_ry,
+                self._sw_rtheta,
+                self._sw_rv,
+                self._sw_cur_s,
+            )
+        self._swtraj.append(np.array([self._sw_rx, self._sw_ry]))
+
+    def _update_freeflow_reference(self) -> None:
+        """Advance the unobstructed path-follower used as the timing datum.
+
+        Path-following reads only the lookahead points, so this robot ignores the
+        pedestrians entirely and reaches the goal in the time the route takes with
+        no encounters at all. It is not drawn; it exists to time the route.
+        """
+        if self._ff_goal_step is not None:
+            return
+
+        (
+            self._ff_rx,
+            self._ff_ry,
+            self._ff_rtheta,
+            self._ff_rv,
+            self._ff_cur_s,
+        ) = self._step_path_follower(
+            self._ff_rx,
+            self._ff_ry,
+            self._ff_rtheta,
+            self._ff_rv,
+            self._ff_cur_s,
+        )
+        if self._ff_cur_s >= self.path.total_length - 1.0:
+            self._ff_goal_step = self.steps
+
+    def stopwait_baseline(self) -> dict:
+        """Reconstructed stop-and-wait time-to-goal for the run so far.
+
+        A zero velocity command freezes the robot in place and the pure-pursuit
+        controller is memoryless, so the robot resumes at exactly the speed it
+        would have had. A stop-and-wait traversal is therefore the unobstructed
+        traversal with pauses inserted, and its time-to-goal is the unobstructed
+        time plus the time spent waiting.
+        """
+        dt = float(self.cfg["dt"])
+        wait_s = self._sw_stopped_steps * dt
+        policy_s = self.steps * dt
+        freeflow_s = (
+            None if self._ff_goal_step is None else self._ff_goal_step * dt
+        )
+        stopwait_s = None if freeflow_s is None else freeflow_s + wait_s
+        improvement = None
+        if stopwait_s is not None and stopwait_s > 0.0:
+            improvement = (stopwait_s - policy_s) / stopwait_s * 100.0
+        return {
+            "policy_time_s": policy_s,
+            "freeflow_time_s": freeflow_s,
+            "stopwait_wait_s": wait_s,
+            "stopwait_stopped_steps": int(self._sw_stopped_steps),
+            "stopwait_time_s": stopwait_s,
+            "improvement_pct": improvement,
+        }
 
     def _obs(self) -> np.ndarray:
         c = self.cfg
@@ -1294,6 +1507,22 @@ class FullRunEnv(gym.Env):
         self._htraj = []
         self._goals = []
 
+        self._sw_rx, self._sw_ry, self._sw_rtheta = self.rx, self.ry, self.rtheta
+        self._sw_rv = 0.0
+        self._sw_cur_s = self.cur_s
+        self._sw_visible = bool(self.cfg.get("stopwait_ghost", True))
+        self._sw_stopped = False
+        self._sw_stopped_steps = 0
+        self._sw_seen_in_corridor = False
+        self._sw_released = False
+        self._sw_sync_enc = -1
+        self._swtraj = [np.array([self._sw_rx, self._sw_ry])]
+
+        self._ff_rx, self._ff_ry, self._ff_rtheta = self.rx, self.ry, self.rtheta
+        self._ff_rv = 0.0
+        self._ff_cur_s = self.cur_s
+        self._ff_goal_step = None
+
         self._overlay_text = ""
         self._overlay_ttl = 0
 
@@ -1345,6 +1574,8 @@ class FullRunEnv(gym.Env):
         self._update_progress()
 
         self._update_ghost()
+        self._update_stopwait_ghost()
+        self._update_freeflow_reference()
 
         enc_info = self._check_encounter_events()
 
@@ -1380,6 +1611,7 @@ class FullRunEnv(gym.Env):
 
         if terminated or truncated:
             info["encounter_results"] = list(self._encounter_results)
+            info["stopwait_baseline"] = self.stopwait_baseline()
 
         reward = 0.0
         obs = self._obs()
@@ -1407,6 +1639,11 @@ class FullRunEnv(gym.Env):
 
         x_lo = self.rx - vb
         x_hi = self.rx + va
+        if self._sw_visible:
+            # Widen the view leftwards so the stop-and-wait ghost stays on screen
+            # while it waits and the robot pulls ahead of it.
+            x_lo = min(x_lo, self._sw_rx - 1.5)
+            x_lo = max(x_lo, x_hi - float(c.get("view_max_span", 30.0)))
         y_lo = c["path_y"] - vh
         y_hi = c["path_y"] + vh
 
@@ -1470,6 +1707,14 @@ class FullRunEnv(gym.Env):
                 alpha=0.35,
             )
 
+        # Stop-and-wait baseline ghost trajectory
+        if self._sw_visible and len(self._swtraj) > 1:
+            st = np.array(self._swtraj)
+            ax.plot(
+                st[:, 0], st[:, 1], color="#8e24aa", ls=":", lw=1.8,
+                alpha=0.6, label="Stop-and-wait ghost",
+            )
+
         # Human trajectory
         if self._human_visible and len(self._htraj) > 1:
             ht = np.array(self._htraj)
@@ -1508,6 +1753,29 @@ class FullRunEnv(gym.Env):
                 head_width=0.12, head_length=0.08, fc="#1565c0", ec="#1565c0",
                 alpha=0.75, zorder=10,
             )
+
+        # Stop-and-wait baseline ghost — present for the whole run
+        if self._sw_visible:
+            ax.add_patch(plt.Circle(
+                (self._sw_rx, self._sw_ry), c["robot_radius"],
+                fill=False, ls="-", color="#8e24aa", lw=2.0, alpha=0.85, zorder=9,
+            ))
+            ax.add_patch(plt.Circle(
+                (self._sw_rx, self._sw_ry), c["robot_radius"] * 0.55,
+                color="#ce93d8", alpha=0.45, zorder=9,
+            ))
+            ax.arrow(
+                self._sw_rx, self._sw_ry,
+                al * np.cos(self._sw_rtheta), al * np.sin(self._sw_rtheta),
+                head_width=0.12, head_length=0.08, fc="#6a1b9a", ec="#6a1b9a",
+                alpha=0.75, zorder=10,
+            )
+            if self._sw_stopped:
+                ax.text(
+                    self._sw_rx, self._sw_ry + c["robot_radius"] + 0.3, "WAITING",
+                    ha="center", va="bottom", fontsize=7, fontweight="bold",
+                    color="#6a1b9a", zorder=11,
+                )
 
         # Human
         if self._human_visible:
@@ -1568,6 +1836,11 @@ class FullRunEnv(gym.Env):
             f"{phase}  |  Progress: {progress_pct:.0f}%  |  "
             f"Encounters: {n_done}/{n_total}"
         )
+        if self._sw_visible:
+            title += (
+                f"  |  Stop-and-wait waited: "
+                f"{self._sw_stopped_steps * c['dt']:.1f}s"
+            )
         ax.set_title(title, fontsize=10)
         ax.legend(loc="upper right", fontsize=7)
 
@@ -1624,7 +1897,8 @@ def run_full_demo(
             - stop_corridor: stop when human is in corridor, resume after leaving
 
     Returns:
-        Dict with run summary (steps, goal_reached, encounter_results).
+        Dict with run summary (steps, goal_reached, encounter_results,
+        stopwait_baseline).
     """
     env = FullRunEnv(config=config, render_mode="human" if render else None)
     report_path: str | None = None
@@ -1704,6 +1978,7 @@ def run_full_demo(
     elif info.get("out_of_bounds"):
         print(f"\nOut of bounds at {info['step']} steps ({elapsed_s:.1f} s)")
 
+    baseline = env.stopwait_baseline()
     results = info.get("encounter_results", [])
     print(f"\n--- Final Report (total time: {elapsed_s:.1f} s) ---")
     for r in results:
@@ -1716,6 +1991,19 @@ def run_full_demo(
             f"  Encounter {r['idx'] + 1}: {status} "
             f"(min_dist={min_str}, path_follow_min={path_str})"
         )
+
+    if baseline["stopwait_time_s"] is not None:
+        print(
+            f"\n  Stop-and-wait baseline: {baseline['stopwait_time_s']:.1f} s "
+            f"(unobstructed {baseline['freeflow_time_s']:.1f} s + "
+            f"{baseline['stopwait_wait_s']:.1f} s waiting)"
+        )
+        print(f"  This policy:            {baseline['policy_time_s']:.1f} s")
+        if baseline["improvement_pct"] is not None:
+            print(
+                f"  Efficiency improvement: "
+                f"{baseline['improvement_pct']:+.1f}%"
+            )
 
     # Final overlay on the rendering
     if render or env._recording:
@@ -1737,6 +2025,12 @@ def run_full_demo(
                 f"Time: {elapsed_s:.1f} s  |  Steps: {info['step']}  |  "
                 f"Collisions: {n_col}  |  Avoided: {n_suc}"
             )
+            if baseline["improvement_pct"] is not None:
+                summary += (
+                    f"\nStop-and-wait baseline: "
+                    f"{baseline['stopwait_time_s']:.1f} s  "
+                    f"({baseline['improvement_pct']:+.1f}% efficiency)"
+                )
             ax.text(
                 0.5, 0.82, summary,
                 transform=ax.transAxes, ha="center", va="top",
@@ -1768,6 +2062,7 @@ def run_full_demo(
             policy_mode=mode,
             seed=seed,
             video_path=save_video,
+            baseline=baseline,
         )
         print(f"Report saved -> {saved_report}")
 
@@ -1779,6 +2074,7 @@ def run_full_demo(
         "encounter_results": results,
         "video_path": save_video,
         "report_path": report_path,
+        "stopwait_baseline": baseline,
     }
 
 
