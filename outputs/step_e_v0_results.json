@@ -1,0 +1,188 @@
+{
+  "config": {
+    "frames": 360,
+    "workers": 2,
+    "amrs": 6,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "best_shield_steps": 25,
+    "best_reserve_clearance": 1.0
+  },
+  "baseline": {
+    "worker_collisions": 2.0,
+    "amr_amr_collisions": 0.0,
+    "completion": 0.3333333333333333,
+    "mean_progress": 0.7103634085213034,
+    "min_clearance": 0.543132353930546,
+    "stop_ratio": 0.34838709677419355,
+    "per_seed": [
+      {
+        "worker_collisions": 2,
+        "amr_amr_collisions": 0,
+        "completion": 0.3333333333333333,
+        "mean_progress": 0.7103634085213034,
+        "min_clearance": 0.543132353930546,
+        "stop_ratio": 0.34838709677419355
+      },
+      {
+        "worker_collisions": 2,
+        "amr_amr_collisions": 0,
+        "completion": 0.3333333333333333,
+        "mean_progress": 0.7103634085213034,
+        "min_clearance": 0.543132353930546,
+        "stop_ratio": 0.34838709677419355
+      },
+      {
+        "worker_collisions": 2,
+        "amr_amr_collisions": 0,
+        "completion": 0.3333333333333333,
+        "mean_progress": 0.7103634085213034,
+        "min_clearance": 0.543132353930546,
+        "stop_ratio": 0.34838709677419355
+      },
+      {
+        "worker_collisions": 2,
+        "amr_amr_collisions": 0,
+        "completion": 0.3333333333333333,
+        "mean_progress": 0.7103634085213034,
+        "min_clearance": 0.543132353930546,
+        "stop_ratio": 0.34838709677419355
+      },
+      {
+        "worker_collisions": 2,
+        "amr_amr_collisions": 0,
+        "completion": 0.3333333333333333,
+        "mean_progress": 0.7103634085213034,
+        "min_clearance": 0.543132353930546,
+        "stop_ratio": 0.34838709677419355
+      }
+    ]
+  },
+  "v0": {
+    "worker_collisions": 0.0,
+    "amr_amr_collisions": 0.0,
+    "completion": 0.8,
+    "mean_progress": 0.9733684210526317,
+    "min_clearance": 0.5929485139959833,
+    "stop_ratio": 0.1419975166149304,
+    "per_seed": [
+      {
+        "worker_collisions": 0,
+        "amr_amr_collisions": 0,
+        "completion": 0.8333333333333334,
+        "mean_progress": 0.9755263157894737,
+        "min_clearance": 0.5929485139959833,
+        "stop_ratio": 0.13069908814589665
+      },
+      {
+        "worker_collisions": 0,
+        "amr_amr_collisions": 0,
+        "completion": 0.8333333333333334,
+        "mean_progress": 0.9755263157894737,
+        "min_clearance": 0.5929485139959833,
+        "stop_ratio": 0.13333333333333333
+      },
+      {
+        "worker_collisions": 0,
+        "amr_amr_collisions": 0,
+        "completion": 0.8333333333333334,
+        "mean_progress": 0.9755263157894737,
+        "min_clearance": 0.5929485139959833,
+        "stop_ratio": 0.13287775246772968
+      },
+      {
+        "worker_collisions": 0,
+        "amr_amr_collisions": 0,
+        "completion": 0.8333333333333334,
+        "mean_progress": 0.9755263157894737,
+        "min_clearance": 0.5929485139959833,
+        "stop_ratio": 0.132319391634981
+      },
+      {
+        "worker_collisions": 0,
+        "amr_amr_collisions": 0,
+        "completion": 0.6666666666666666,
+        "mean_progress": 0.9647368421052632,
+        "min_clearance": 0.5929485139959833,
+        "stop_ratio": 0.18075801749271136
+      }
+    ]
+  },
+  "sweep": [
+    {
+      "shield_steps": 6,
+      "reserve_clearance": 1.0,
+      "worker_collisions": 3.0,
+      "amr_amr_collisions": 0.0,
+      "completion": 0.3333333333333333,
+      "mean_progress": 0.6424898496240603,
+      "min_clearance": 0.586441028788214,
+      "stop_ratio": 0.29535864978902954
+    },
+    {
+      "shield_steps": 8,
+      "reserve_clearance": 1.0,
+      "worker_collisions": 3.0,
+      "amr_amr_collisions": 0.0,
+      "completion": 0.3333333333333333,
+      "mean_progress": 0.6371091478696743,
+      "min_clearance": 0.5653618620022697,
+      "stop_ratio": 0.30316914852997323
+    },
+    {
+      "shield_steps": 10,
+      "reserve_clearance": 1.0,
+      "worker_collisions": 3.0,
+      "amr_amr_collisions": 0.0,
+      "completion": 0.3333333333333333,
+      "mean_progress": 0.6308328320802006,
+      "min_clearance": 0.5665891604315277,
+      "stop_ratio": 0.31245254365983294
+    },
+    {
+      "shield_steps": 12,
+      "reserve_clearance": 1.0,
+      "worker_collisions": 2.0,
+      "amr_amr_collisions": 0.0,
+      "completion": 0.6666666666666666,
+      "mean_progress": 0.757997076023392,
+      "min_clearance": 0.5756276744145,
+      "stop_ratio": 0.12839945294247754
+    },
+    {
+      "shield_steps": 16,
+      "reserve_clearance": 1.0,
+      "worker_collisions": 2.0,
+      "amr_amr_collisions": 0.0,
+      "completion": 0.6666666666666666,
+      "mean_progress": 0.755235964912281,
+      "min_clearance": 0.5575117118708145,
+      "stop_ratio": 0.16533632225622993
+    },
+    {
+      "shield_steps": 20,
+      "reserve_clearance": 1.0,
+      "worker_collisions": 1.0,
+      "amr_amr_collisions": 0.0,
+      "completion": 0.6666666666666666,
+      "mean_progress": 0.8259798245614035,
+      "min_clearance": 0.5525031698508124,
+      "stop_ratio": 0.22917082917082918
+    },
+    {
+      "shield_steps": 25,
+      "reserve_clearance": 1.0,
+      "worker_collisions": 0.0,
+      "amr_amr_collisions": 0.0,
+      "completion": 0.8333333333333334,
+      "mean_progress": 0.9755263157894737,
+      "min_clearance": 0.5929485139959833,
+      "stop_ratio": 0.13230339131565325
+    }
+  ]
+}

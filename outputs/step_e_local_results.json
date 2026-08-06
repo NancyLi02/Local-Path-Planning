@@ -1,0 +1,22 @@
+{
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "rule": {
+    "completion": 1.0,
+    "collisions": 0.0,
+    "min_clear": 0.8518063091814598,
+    "local_frames": 193.0
+  },
+  "rl": {
+    "completion": 0.8333333333333334,
+    "collisions": 1.0,
+    "min_clear": 0.543132353930546,
+    "local_frames": 233.0
+  },
+  "model": "logs/V1_local/episodic_best.pt"
+}

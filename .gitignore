@@ -1,5 +1,22 @@
-venv/
+# Python
 __pycache__/
-*.pyc
-.DS_Store
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Editor
 .vscode/
+.idea/
+.DS_Store
+
+# Scratch / debug outputs (keep curated demos & showcases manually)
+outputs/*_debug*
+outputs/*_test.*
+
+# RL no-go table cache
+.cache/

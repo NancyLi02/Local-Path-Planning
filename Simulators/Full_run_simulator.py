@@ -34,7 +34,7 @@ Examples:
   --model logs/SAC/sac_v11/sac_v11.zip \
   --algo sac \
   --seed $RANDOM \
-  --save-video fr_sacv11_4.gif
+  --save-video fr_sacv11_t9.gif
 
 5. Longer route:
     python3 Simulators/Full_run_simulator.py --model logs/SAC/sac_v10/sac_v10.zip --algo sac --path-length 80 --save-video fr_sacv10_t1.gif
