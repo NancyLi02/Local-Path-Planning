@@ -15,6 +15,7 @@ import torch
 from ..tools.local_replanning import LocalReplanSim, LocalReplanConfig
 from .local_cluster_env import LocalClusterEnv, LocalEnvConfig, OBS_DIM
 from .local_policy import LocalAttentionPolicy
+from .cluster_policy import act_clusters
 
 
 def _min_clear_and_localframes(sim, f, acc):
@@ -43,11 +44,9 @@ def run_rl(seed, frames, workers, amrs, policy, device):
     acc = {"min_clear": float("inf"), "localframes": 0}
     done = False
     while not done:
-        mask = env.active_mask
-        ot = torch.as_tensor(obs[None], dtype=torch.float32, device=device)
-        mt = torch.as_tensor(mask[None], dtype=torch.bool, device=device)
-        a, _, _ = policy.act(ot, mt, deterministic=True)
-        obs, r, done, info = env.step(a[0].cpu().numpy())
+        act, _, _ = act_clusters(policy, obs, env.cluster_mask, env.cluster_valid,
+                                 device, deterministic=True)
+        obs, r, done, info = env.step(act)
         _min_clear_and_localframes(sim, env.frame - 1, acc)
     return _metrics(sim, acc, frames)
 

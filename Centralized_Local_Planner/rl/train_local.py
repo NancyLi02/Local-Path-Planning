@@ -1,5 +1,10 @@
 """PPO trainer for the spatial local-replanning attention policy (Phase 2, GPU).
 
+One SHARED policy is trained across all conflict clusters: each cluster is a
+separate row of the observation, so clusters are processed independently by the
+attention pass (see ``rl/cluster_policy.py``) while every gradient update
+touches the same weights.
+
     python -m Centralized_Local_Planner.rl.train_local --timesteps 200000
 """
 from __future__ import annotations
@@ -13,19 +18,21 @@ import torch
 
 from .local_cluster_env import LocalClusterEnv, LocalEnvConfig, OBS_DIM
 from .local_policy import LocalAttentionPolicy
+from .cluster_policy import act_clusters, evaluate_clusters
+
 
 _LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "V1_local"
 
 
 def _greedy_action(obs, mask):
-    """Baseline: head straight to the exit (to-exit dir = obs[:,0:2])."""
-    a = np.zeros((obs.shape[0], 2), dtype=np.float32)
-    for i in range(obs.shape[0]):
-        if mask[i]:
-            v = obs[i, 0:2]
-            n = float(np.linalg.norm(v))
-            a[i] = v / n if n > 1e-6 else 0.0
-    return a
+    """Baseline: head straight to the exit (to-exit dir = obs[..., 0:2]).
+
+    Shape-agnostic over the leading axes, so it works per-cluster on (C, M, D).
+    """
+    v = np.asarray(obs)[..., 0:2]
+    n = np.linalg.norm(v, axis=-1, keepdims=True)
+    live = np.asarray(mask)[..., None] & (n > 1e-6)
+    return np.where(live, v / np.maximum(n, 1e-9), 0.0).astype(np.float32)
 
 
 def behavior_clone(policy, env, seeds, device, epochs=400, mb=512):
@@ -35,7 +42,7 @@ def behavior_clone(policy, env, seeds, device, epochs=400, mb=512):
     for s in seeds:
         obs = env.reset(s); done = False
         while not done:
-            mask = env.active_mask
+            mask = env.cluster_mask
             act = _greedy_action(obs, mask)
             if mask.any():
                 O.append(obs.copy()); M.append(mask.copy()); A.append(act)
@@ -52,10 +59,13 @@ def behavior_clone(policy, env, seeds, device, epochs=400, mb=512):
         last = 0.0
         for st in range(0, n, mb):
             b = idx[st:st + mb]
-            mean, _, _ = policy.forward(O[b], M[b])
-            pred = torch.tanh(mean)
-            mf = M[b].unsqueeze(-1).float()
-            loss = (((pred - A[b]) ** 2) * mf).sum() / mf.sum().clamp(min=1.0)
+            ob, mk, ab = O[b], M[b], A[b]
+            # Fold (batch, cluster) into the batch axis: one row per cluster.
+            flat = ob.reshape(-1, ob.shape[-2], ob.shape[-1])
+            mean, _, _ = policy.forward(flat, mk.reshape(-1, mk.shape[-1]))
+            pred = torch.tanh(mean).reshape(ab.shape)
+            mf = mk.unsqueeze(-1).float()
+            loss = (((pred - ab) ** 2) * mf).sum() / mf.sum().clamp(min=1.0)
             opt.zero_grad(); loss.backward(); opt.step(); last = float(loss.item())
     print(f"  BC warm-start done ({n} samples), final imitation loss {last:.4f}")
 
@@ -65,14 +75,12 @@ def evaluate(env, policy, seeds, device, mode="policy"):
     for s in seeds:
         obs = env.reset(s); R = 0.0; info = {}; done = False
         while not done:
-            mask = env.active_mask
             if mode == "greedy":
-                act = _greedy_action(obs, mask)
+                act = _greedy_action(obs, env.cluster_mask)
             else:
-                ot = torch.as_tensor(obs[None], dtype=torch.float32, device=device)
-                mt = torch.as_tensor(mask[None], dtype=torch.bool, device=device)
-                a, _, _ = policy.act(ot, mt, deterministic=True)
-                act = a[0].cpu().numpy()
+                act, _, _ = act_clusters(policy, obs, env.cluster_mask,
+                                         env.cluster_valid, device,
+                                         deterministic=True)
             obs, r, done, info = env.step(act); R += r
         comp.append(info["completion"]); coll.append(info["collided"])
         prog.append(info["mean_progress"]); rets.append(R)
@@ -140,26 +148,20 @@ def main(argv=None):
     while gstep < args.timesteps:
         it += 1
         critic_only = it <= args.critic_warmup
-        B = dict(o=[], m=[], a=[], lp=[], v=[], r=[], d=[])
+        B = dict(o=[], m=[], cv=[], a=[], lp=[], v=[], r=[], d=[])
         for _ in range(args.rollout):
-            mask = env.active_mask
-            ot = torch.as_tensor(obs[None], dtype=torch.float32, device=device)
-            mt = torch.as_tensor(mask[None], dtype=torch.bool, device=device)
-            with torch.no_grad():
-                act, lp, val = policy.act(ot, mt)
-            a = act[0].cpu().numpy()
+            mask = env.cluster_mask; valid = env.cluster_valid
+            a, lp, val = act_clusters(policy, obs, mask, valid, device)
             nobs, r, done, info = env.step(a)
-            B["o"].append(obs); B["m"].append(mask); B["a"].append(a)
-            B["lp"].append(float(lp.item())); B["v"].append(float(val.item()))
+            B["o"].append(obs); B["m"].append(mask); B["cv"].append(valid)
+            B["a"].append(a); B["lp"].append(lp); B["v"].append(val)
             B["r"].append(r); B["d"].append(done); gstep += 1
             if done:
                 si = (si + 1) % len(seeds); obs = env.reset(seeds[si])
             else:
                 obs = nobs
-        with torch.no_grad():
-            mt = torch.as_tensor(env.active_mask[None], dtype=torch.bool, device=device)
-            ot = torch.as_tensor(obs[None], dtype=torch.float32, device=device)
-            _, _, lastv = policy.act(ot, mt); lastv = float(lastv.item())
+        _, _, lastv = act_clusters(policy, obs, env.cluster_mask,
+                                   env.cluster_valid, device)
 
         rew = np.array(B["r"], np.float32); val = np.array(B["v"], np.float32)
         dn = np.array(B["d"], np.float32); adv = np.zeros_like(rew); g = 0.0
@@ -173,6 +175,7 @@ def main(argv=None):
 
         to = torch.as_tensor(np.array(B["o"]), dtype=torch.float32, device=device)
         tm = torch.as_tensor(np.array(B["m"]), dtype=torch.bool, device=device)
+        tcv = torch.as_tensor(np.array(B["cv"]), dtype=torch.bool, device=device)
         ta = torch.as_tensor(np.array(B["a"]), dtype=torch.float32, device=device)
         tlp = torch.as_tensor(np.array(B["lp"]), dtype=torch.float32, device=device)
         tadv = torch.as_tensor(adv, dtype=torch.float32, device=device)
@@ -183,7 +186,8 @@ def main(argv=None):
             np.random.shuffle(idx)
             for st in range(0, n, args.minibatch):
                 mb = idx[st:st + args.minibatch]
-                lp, ent, vp = policy.evaluate(to[mb], tm[mb], ta[mb])
+                lp, ent, vp = evaluate_clusters(policy, to[mb], tm[mb],
+                                                tcv[mb], ta[mb])
                 v_loss = ((vp - tret[mb]) ** 2).mean()
                 if critic_only:
                     loss = v_loss

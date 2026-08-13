@@ -6,6 +6,11 @@ self-attention) so value-function updates never disturb the actor -- this makes
 BC warm-start + PPO fine-tuning stable. The actor outputs a 2D displacement
 (tanh-squashed diagonal Gaussian) = each AMR's local goal; the 2D shield then
 projects it to safety, so the policy can be aggressive.
+
+``obs`` is (batch, tokens, obs_dim) and attention runs over the token axis only.
+Callers therefore put ONE conflict cluster per batch row -- see
+``rl/cluster_policy.py`` -- which keeps clusters from attending to each other
+while sharing a single set of weights.
 """
 from __future__ import annotations
 

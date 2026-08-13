@@ -14,6 +14,7 @@ import torch
 
 from .local_cluster_env import LocalClusterEnv, LocalEnvConfig, OBS_DIM
 from .local_policy import LocalAttentionPolicy
+from .cluster_policy import act_clusters
 from ..tools.geometry import safety_tube_polygon
 from ..viz.render_local import animate_local, _TRAIL
 
@@ -30,11 +31,9 @@ def _simulate_rl(model, num_frames, num_workers, num_amrs, seed, hidden, device)
     for f in range(num_frames):
         if done:
             break
-        mask = env.active_mask
-        ot = torch.as_tensor(obs[None], dtype=torch.float32, device=device)
-        mt = torch.as_tensor(mask[None], dtype=torch.bool, device=device)
-        act, _, _ = policy.act(ot, mt, deterministic=True)
-        obs, r, done, info = env.step(act[0].cpu().numpy())
+        act, _, _ = act_clusters(policy, obs, env.cluster_mask, env.cluster_valid,
+                                 device, deterministic=True)
+        obs, r, done, info = env.step(act)
 
         amrs = []
         for a in sim.amrs:
