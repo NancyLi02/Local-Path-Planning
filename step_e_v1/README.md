@@ -25,6 +25,7 @@ step_e_v1/
 ├── commands.py              Command, trajectory_to_command
 ├── planner_base.py          shared rollout -> backups -> shield -> dispatch loop
 ├── stopgo_planner.py        StopAndGoReplanner      (drive-or-halt baseline)
+├── legacy_rail.py           runs the ORIGINAL rail V0, same metrics + drawing
 ├── v0_planner.py            V0SequentialReplanner   (TTC-priority baseline)
 ├── v1_planner.py            V1AttentionReplanner    (learned proposals)
 ├── runtime.py               A->D pipeline + Step E + command tracking (closed loop)
@@ -132,38 +133,48 @@ behind every planner; V1 uses `logs/step_e_v1/v1_best.pt`. The horizon is 560
 frames rather than 420 so that every planner reaches 100 % completion and the
 makespan is directly comparable.
 
-The comparison walks one ladder of action sets, everything else held fixed --
-same observation, same TTC priority order, same shield, same commands:
+The comparison walks one ladder of action sets. The middle rung answers "what
+is speed control alone worth?" and is measured by **running the original
+Step-5 planner itself** rather than re-implementing it.
 
 | rung | action set |
 |---|---|
 | **STOP-GO** | `{GO at full speed on the path, STOP and wait}` -- the classic industrial controller |
-| **V0 speed-only** | + continuous speed modulation, still pinned to the rail |
+| **rail V0** | speed steps `1 / 2/3 / 1/3 / 0`, fastest admissible wins, always on the rail. This is `Centralized_Local_Planner.tools.replanning.V0Replanner` driving its own pipeline, unchanged; `step_e_v1/legacy_rail.py` only collects its metrics and draws it in the same style |
 | **V0** | + one metre of lateral freedom (the specification's V0 candidate set, which includes left / right shift) |
 | **V1** | V0's nominal proposal replaced by the learned one |
 
-| metric                   | STOP-GO | V0 speed-only | V0 (baseline) | V1 safety-first | V1 proposal-first |
-|--------------------------|--------:|--------------:|--------------:|----------------:|------------------:|
-| worker collisions        |**0.00** |      **0.00** |      **0.00** |        **0.00** |              0.40 |
-| completion %             | **100** |       **100** |       **100** |         **100** |              93.3 |
-| makespan [frames]        |   435.0 |         361.0 |     **352.6** |           354.8 |     n/a, censored |
-| stop ratio %             |   59.04 |         10.19 |          3.30 |            1.42 |          **0.76** |
-| route deviation [m]      |   0.000 |         0.000 |         0.038 |           0.073 |             0.084 |
-| AMR-frames replanning    |     519 |           420 |           328 |             302 |           **273** |
-| candidate rollouts / AMR |**2.00** |          6.00 |          8.00 |            8.00 |              2.86 |
-| plan time [ms]           |**10.6** |          31.6 |          33.4 |            60.6 |              37.1 |
+| metric                   | STOP-GO | rail V0 | V0 (baseline) | V1 safety-first | V1 proposal-first |
+|--------------------------|--------:|--------:|--------------:|----------------:|------------------:|
+| worker collisions        |**0.00** |**0.00** |      **0.00** |        **0.00** |              0.40 |
+| completion %             | **100** | **100** |       **100** |         **100** |              93.3 |
+| makespan [frames]        |   435.0 |   401.0 |     **352.6** |           354.8 |     n/a, censored |
+| stop ratio %             |   59.04 |   13.73 |          3.30 |            1.42 |          **0.76** |
+| min clearance [m]        |   0.278 |   0.593 |         0.278 |           0.278 |             0.278 |
+| route deviation [m]      |   0.000 |   0.000 |         0.038 |           0.073 |             0.084 |
+| AMR-frames replanning    |     519 |     n/a |           328 |             302 |           **273** |
+| candidate rollouts / AMR |**2.00** |    4.00 |          8.00 |            8.00 |              2.86 |
+| plan time [ms]           |    10.6 |**8.66** |          33.4 |            60.6 |              37.1 |
 
-* **Safety is the shield's job, not the planner's.** All three collision-free
-  planners score exactly 0.00 with the same minimum clearance (0.278 m). Cutting
-  the action set down to stop-and-go does not make the fleet less safe -- the
-  space-time shield already guarantees that.
-* **Speed modulation carries most of the throughput.** Going from drive-or-halt
-  to continuous speed control cuts the stop ratio 59.0 % -> 10.2 % and the
-  makespan 435 -> 361 frames, for 21 ms of extra planning.
-* **The lateral degree of freedom buys smoothness, not much time.** Adding one
-  metre of lateral freedom takes the stop ratio down again, 10.2 % -> 3.3 %, but
-  the makespan only 361 -> 353 frames. It stops the AMRs waiting; it does not
-  make the mission much shorter.
+The rail V0 column is measured in **its own pipeline**, which shields every
+active AMR every frame and has no cluster hand-over and no busy area, while the
+other four share this module's runtime. So that column compares a *system*, not
+only an action set -- which is also why its minimum clearance is larger and why
+"AMR-frames replanning" and "shield override %" are not defined the same way
+and are omitted rather than misreported.
+
+* **Safety is the shield's job, not the planner's.** Every collision-free rung
+  scores exactly 0.00, from drive-or-halt upwards. Cutting the action set down
+  does not make the fleet less safe -- the space-time shield already guarantees
+  that.
+* **Speed control alone is already collision-free**, and it is what buys most of
+  the throughput back from stop-and-go: stop ratio 59.0 % -> 13.7 %, makespan
+  435 -> 401 frames.
+* **The lateral degree of freedom buys the rest.** From rail V0 to V0: makespan
+  401 -> 353 frames and stop ratio 13.7 % -> 3.3 %, about 12 % of the mission
+  time and three quarters of the stopping. (Measured strictly inside this
+  module, the ablation row "no lateral DOF" isolates the same effect: 10.2 %
+  stop ratio against 3.3 %.)
 * **V1 safety-first** (the learned action is one more candidate, shield still
   picks the cheapest safe one) keeps the perfect safety and completion and **more
   than halves the stopping again** (3.30 % -> 1.42 %), with 8 % fewer AMR-frames
@@ -224,6 +235,8 @@ python -m step_e_v1.evaluate --compare --model logs/step_e_v1/v1_best.pt --seeds
        --out outputs/step_e_v1_module_compare.json
 python -m step_e_v1.evaluate --planner v1 --model logs/step_e_v1/v1_best.pt \
        --seeds 5 --set v1_prefer_proposal=False                  # safety-first mode
+python -m step_e_v1.legacy_rail --seeds 5 --frames 560            # original rail V0
+python -m step_e_v1.legacy_rail --render --seed 0                # its demo
 python -m step_e_v1.sweep --ablation --seeds 5 --jobs 5           # ablation table
 python -m step_e_v1.plot_curve                                    # training curve
 python -m step_e_v1.render --planner v1 --model logs/step_e_v1/v1_best.pt
@@ -236,9 +249,9 @@ outputs/8_step_e_v1_module/report.html              the write-up
 outputs/8_step_e_v1_module/training_curve.png      BC + PPO vs the V0 teacher
 outputs/8_step_e_v1_module/results/compare_3way.json   MAIN TABLE
 outputs/8_step_e_v1_module/results/ablation.json       one-factor ablation
-outputs/8_step_e_v1_module/results/{stopgo,v0,v0_speed_only}.json
+outputs/8_step_e_v1_module/results/{stopgo,rail_v0,v0}.json
 outputs/8_step_e_v1_module/results/v1_{safety,proposal}_first.json
-outputs/8_step_e_v1_module/demos/demo_{stopgo,v0,v1}.mp4
+outputs/8_step_e_v1_module/demos/demo_{stopgo,rail_v0,v0,v1}.mp4
 logs/step_e_v1/v1_{bc,best,final}.pt           checkpoints
 logs/step_e_v1/v1_train.log                    training log (dropout disabled)
 logs/step_e_v1/ppo_dropout_run.log             the dropout failure, kept as evidence

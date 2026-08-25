@@ -82,13 +82,23 @@ def simulate(planner_kind, cfg, frames, workers, amrs, seed, model, device):
     return snaps, rt
 
 
+_TITLE = {
+    "stopgo": "stop-and-go (drive or halt)",
+    "rail_v0": "original rail V0 \u2014 speed steps 1 / \u2154 / \u2153 / 0",
+    "v0": "V0 (speed + lateral)",
+    "v1": "V1 (learned proposal, safety-first)",
+    "v1_proposal_first": "V1 (learned proposal, executed when safe)",
+}
+
+
 def build(snaps, rt, planner_kind, out_path, fps=12):
+    del rt                                  # snapshots carry everything drawn
     fig, (ax, panel) = plt.subplots(
         1, 2, figsize=(17.5, 8.4), gridspec_kw={"width_ratios": [3.0, 1.0]})
     fig.patch.set_facecolor("#fbfbfb")
     _draw_factory(ax)
-    ax.set_title(f"Step E — {planner_kind.upper()} local replanning "
-                 f"(policy proposes, shield decides)", fontsize=13, weight="bold")
+    ax.set_title(f"Step E — {_TITLE.get(planner_kind, planner_kind.upper())} "
+                 f"(planner proposes, shield decides)", fontsize=13, weight="bold")
     panel.axis("off")
 
     tubes = [ax.fill([], [], color="#9e9e9e", alpha=0.10, zorder=2)[0] for _ in range(4)]
@@ -196,16 +206,28 @@ def main(argv=None):
     pa.add_argument("--amrs", type=int, default=6)
     pa.add_argument("--device", default="cpu")
     pa.add_argument("--fps", type=int, default=12)
+    pa.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override a V1Config field (repeatable)")
+    pa.add_argument("--label", default=None,
+                    help="title key and default file name")
     pa.add_argument("--out", default=None)
     args = pa.parse_args(argv)
 
     matplotlib.use("Agg")
-    cfg = V1Config(); cfg.validate()
+    cfg = V1Config()
+    for item in args.set:
+        key, _, value = item.partition("=")
+        cur = getattr(cfg, key)
+        cast = type(cur)
+        setattr(cfg, key, value == "True" if cast is bool else cast(value))
+    cfg.__post_init__()
+    cfg.validate()
+    label = args.label or args.planner
     snaps, rt = simulate(args.planner, cfg, args.frames, args.workers, args.amrs,
                          args.seed, args.model, args.device)
     out = (Path(args.out) if args.out else
-           _REPO / "outputs" / "8_step_e_v1_module" / "demos" / f"demo_{args.planner}.mp4")
-    build(snaps, rt, args.planner, out, fps=args.fps)
+           _REPO / "outputs" / "8_step_e_v1_module" / "demos" / f"demo_{label}.mp4")
+    build(snaps, rt, label, out, fps=args.fps)
     m = rt.metrics()
     print(f"saved -> {out}")
     print("  completion %.0f%%  collisions %d  stop %.1f%%  shield %.1f%%  plan %.1f ms"

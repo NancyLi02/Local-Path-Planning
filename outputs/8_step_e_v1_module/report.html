@@ -363,14 +363,14 @@
 
   <div class="tiles">
     <div class="tile">
-      <div class="tile-k">Collisions, all three</div>
+      <div class="tile-k">Collisions, every rung</div>
       <div class="tile-v">0.00</div>
       <div class="tile-n">safety is the shield's job</div>
     </div>
     <div class="tile">
       <div class="tile-k">Stop ratio</div>
       <div class="tile-v">59 <span style="font-size:17px;color:var(--ink-3)">&rarr;</span> 1.4<span style="font-size:18px">%</span></div>
-      <div class="tile-n">59 &middot; 10 &middot; 3.3 &middot; 1.4 across the ladder</div>
+      <div class="tile-n">59 &middot; 13.7 &middot; 3.3 &middot; 1.4 up the ladder</div>
     </div>
     <div class="tile">
       <div class="tile-k">Makespan</div>
@@ -422,16 +422,13 @@
     <h2>Results</h2>
     <div class="col">
       <p>
-        Four rungs of one ladder, sharing everything except the action set &mdash; same
-        observation, same TTC priority order, same shield, same commands.
-      </p>
-      <p style="margin-bottom:22px">
-        <b>Stop-and-go</b> is the classic industrial controller:
-        <span class="mono">{GO at full speed on the path, STOP and wait}</span>.
-        <b>V0 speed-only</b> adds continuous speed modulation but stays pinned to the rail.
-        <b>V0</b> adds one metre of lateral freedom &mdash; the specification's V0 candidate
-        set does include a left and a right shift. <b>V1</b> replaces V0's nominal proposal
-        with the learned one.
+        One ladder of action sets. <b>Stop-and-go</b> is the classic industrial
+        controller: <span class="mono">{GO at full speed, STOP and wait}</span>.
+        <b>Rail V0</b> is the original Step-5 planner &mdash; speed steps
+        <span class="mono">1 / &#8532; / &#8531; / 0</span>, fastest admissible wins,
+        always on the rail &mdash; <em>run as-is</em>, not re-implemented. <b>V0</b> adds
+        one metre of lateral freedom, which the specification's V0 candidate set includes.
+        <b>V1</b> replaces V0's nominal proposal with the learned one.
       </p>
     </div>
     <div class="scroll">
@@ -440,7 +437,7 @@
           <tr>
             <th>metric</th>
             <th>STOP-GO</th>
-            <th>V0 speed-only</th>
+            <th>rail V0</th>
             <th class="v0col">V0</th>
             <th class="v1col">V1 safety-first</th>
             <th class="v1col">V1 proposal-first</th>
@@ -449,18 +446,19 @@
         <tbody>
           <tr><td>worker collisions</td><td class="best">0.00</td><td class="best">0.00</td><td class="best">0.00</td><td class="best">0.00</td><td class="worst">0.40</td></tr>
           <tr><td>completion&nbsp;%</td><td class="best">100</td><td class="best">100</td><td class="best">100</td><td class="best">100</td><td class="worst">93.3</td></tr>
-          <tr><td>makespan [frames]</td><td class="worst">435.0</td><td>361.0</td><td class="best">352.6</td><td>354.8</td><td>censored</td></tr>
-          <tr><td>stop ratio&nbsp;%</td><td class="worst">59.04</td><td>10.19</td><td>3.30</td><td>1.42</td><td class="best">0.76</td></tr>
+          <tr><td>makespan [frames]</td><td class="worst">435.0</td><td>401.0</td><td class="best">352.6</td><td>354.8</td><td>censored</td></tr>
+          <tr><td>stop ratio&nbsp;%</td><td class="worst">59.04</td><td>13.73</td><td>3.30</td><td>1.42</td><td class="best">0.76</td></tr>
+          <tr><td>min clearance&nbsp;m</td><td>0.278</td><td class="best">0.593</td><td>0.278</td><td>0.278</td><td>0.278</td></tr>
           <tr><td>route deviation&nbsp;m</td><td>0.000</td><td>0.000</td><td>0.038</td><td>0.073</td><td>0.084</td></tr>
-          <tr><td>AMR-frames replanning</td><td class="worst">519</td><td>420</td><td>328</td><td>302</td><td class="best">273</td></tr>
-          <tr><td>candidate rollouts / AMR</td><td class="best">2.00</td><td>6.00</td><td>8.00</td><td>8.00</td><td>2.86</td></tr>
-          <tr><td>plan time&nbsp;ms</td><td class="best">10.6</td><td>31.6</td><td>33.4</td><td>60.6</td><td>37.1</td></tr>
+          <tr><td>candidate rollouts / AMR</td><td class="best">2.00</td><td>4.00</td><td>8.00</td><td>8.00</td><td>2.86</td></tr>
+          <tr><td>plan time&nbsp;ms</td><td>10.6</td><td class="best">8.66</td><td>33.4</td><td>60.6</td><td>37.1</td></tr>
         </tbody>
         <caption>
-          Full simulator, 5 seeds &times; 560 frames &mdash; long enough that every
-          collision-free planner reaches 100&nbsp;% completion, so the makespans are
-          comparable. Proposal-first V1 does not finish every run, so its makespan is
-          censored.
+          Full simulator, 5 seeds &times; 560 frames. The rail V0 column runs in its own
+          pipeline &mdash; every active AMR shielded every frame, no cluster hand-over, no
+          busy area &mdash; so it compares a system, not only an action set; that is also
+          why its clearance is larger. Metrics defined differently across the two pipelines
+          are omitted rather than misreported.
         </caption>
       </table>
     </div>
@@ -474,18 +472,29 @@
         workers alike.
       </p>
 
-      <h3>Speed modulation carries most of the throughput</h3>
+      <h3>Speed control alone is already collision-free</h3>
       <p>
-        Going from drive-or-halt to continuous speed control cuts the stop ratio from
-        <b>59.0&nbsp;% to 10.2&nbsp;%</b> and the makespan from <b>435 to 361 frames</b>,
-        for 21 ms of extra planning per cluster. Most of what a local replanner is worth
-        here is simply not having to come to a full stop.
+        The original rail planner clears every mission with zero collisions and the largest
+        minimum clearance in the set, 0.593 m. What it costs is throughput: it halts on
+        <b>13.7&nbsp;%</b> of the AMR-frames and needs <b>401 frames</b> against V0's 353.
+        Most of what stop-and-go gives up &mdash; 59&nbsp;% halted, 435 frames &mdash; is
+        bought straight back by being allowed to slow down instead of stopping.
       </p>
-      <h3>The lateral freedom buys smoothness, not much time</h3>
+      <div class="note">
+        <span class="eyebrow">A correction worth recording</span>
+        <p>
+          An earlier version of this page reported that speed-only control was not
+          collision-free. That number came from re-implementing the rail planner inside
+          this module's runtime, where it did collide. Running the original planner instead
+          shows it is collision-free, so the finding was about the re-implementation, not
+          about speed-only control. The rung is now measured by running the original code.
+        </p>
+      </div>
+      <h3>What the lateral freedom buys</h3>
       <p>
-        One metre of lateral room takes the stop ratio down again, 10.2&nbsp;% &rarr;
-        3.3&nbsp;%, but the makespan only 361 &rarr; 353 frames. It stops the AMRs waiting;
-        it does not make the mission much shorter.
+        From rail V0 to V0: makespan 401 &rarr; 353 frames and stop ratio 13.7&nbsp;% &rarr;
+        3.3&nbsp;% &mdash; about 12&nbsp;% of the mission time and three quarters of the
+        stopping.
       </p>
       <h3>What V1 buys, in two modes</h3>
       <p>

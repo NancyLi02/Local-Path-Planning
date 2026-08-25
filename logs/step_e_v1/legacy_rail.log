@@ -1,0 +1,14 @@
+
+seeds=[0, 1, 2, 3, 4] frames=560 amrs=6 workers=2   (original rail V0)
+============================================
+worker collisions                    0.000
+completion %                       100.000
+path progress %                    100.000
+min clearance [m]                    0.593
+makespan [frames]                  401.000
+stop ratio %                        13.731
+shield slowed/stopped %             16.663
+rollouts per AMR                     4.000
+frame time [ms]                      8.656
+============================================
+saved -> /home/nanli/path_planning_ws/outputs/8_step_e_v1_module/results/rail_v0.json

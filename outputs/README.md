@@ -11,7 +11,7 @@ at Step E, in the order they were built.
 | `2_step_b_safety_inflation/` | B | `viz/render_safety.py` | hard / soft no-go lobes + still frames |
 | `3_step_c_affected_amr/` | C | `viz/render_affected.py` | per-AMR conflict status, TTC, Gantt stills |
 | `4_step_d_conflict_cluster/` | D | `viz/render_clusters.py` | conflict clusters and their busy-area hulls |
-| `5_step_e_rail_v0_speed/` | E | `tools/replanning.py`, `eval_v0.py` | **rail V0**: speed-only shield, AMRs never leave the rail |
+| `5_step_e_rail_v0_speed/` | E | `tools/replanning.py`, `eval_v0.py` | **rail V0**: speed-only shield, AMRs never leave the rail. This planner is also the "speed only" rung of the comparison in `8_`, where it is run unchanged through `step_e_v1/legacy_rail.py` |
 | `6_step_e_rail_v1_rl/` | E | `rl/{fleet_env,policy,train_v1}.py` | **rail V1**: attention RL proposing a speed factor behind that shield |
 | `7_step_e_spatial/` | E | `tools/local_replanning.py`, `rl/episodic_env.py` | **spatial**: cluster AMRs leave the rail and move in 2D (rule + RL) |
 | `8_step_e_v1_module/` | E | `step_e_v1/` | **the specification's Step E** (CLAUDE.md): 3-D action, trajectory rollout, four-check shield, command dispatch |
@@ -35,13 +35,17 @@ at Step E, in the order they were built.
 ```
 report.html                       the write-up (published artifact)
 training_curve.png                BC + PPO against the V0 teacher
-demos/demo_stopgo.mp4             stop-and-go baseline, closed loop
-demos/demo_v0.mp4                 V0, closed loop
-demos/demo_v1.mp4                 V1, closed loop
+demos/demo_stopgo.mp4             stop-and-go: drive or halt
+demos/demo_rail_v0.mp4            the ORIGINAL rail V0 (folder 5_), drawn in this style
+demos/demo_v0.mp4                 V0: speed + lateral
+demos/demo_v1.mp4                 V1: learned proposal, safety-first
+demos/demo_v1_proposal_first.mp4  V1 executing its own action when safe
+                                  (all rendered on seed 0, 420 frames)
 results/compare_3way.json         MAIN TABLE - stop-and-go / V0 / V1, 5 seeds x 560 frames
 results/ablation.json             one-factor ablation, 10 configurations
 results/stopgo.json               stop-and-go alone
-results/v0_speed_only.json        V0 with the lateral degree of freedom removed
+results/rail_v0.json              the original rail planner of folder 5_, run as-is
+                                  via step_e_v1/legacy_rail.py
 results/v0.json                   V0 (speed + lateral), the baseline
 results/v1_safety_first.json      V1, proposal ranked among the candidates
 results/v1_proposal_first.json    V1, proposal executed whenever it is safe
@@ -67,4 +71,6 @@ python -m step_e_v1.evaluate --planners stopgo,v0,v1 \
        --model logs/step_e_v1/v1_best.pt --seeds 5 --frames 560 \
        --out outputs/8_step_e_v1_module/results/compare_3way.json
 python -m step_e_v1.render --planner v1 --model logs/step_e_v1/v1_best.pt
+python -m step_e_v1.legacy_rail --seeds 5 --frames 560       # 8_/results/rail_v0.json
+python -m step_e_v1.legacy_rail --render --seed 0           # 8_/demos/demo_rail_v0.mp4
 ```

@@ -1,0 +1,80 @@
+{
+  "worker_collisions": 0.0,
+  "completion": 1.0,
+  "progress": 1.0,
+  "min_clearance": 0.5929485139959833,
+  "makespan": 401.0,
+  "makespan_censored": 0.0,
+  "stop_ratio": 0.13731136148945472,
+  "shield_rate": 0.16662718594316747,
+  "control_frames": 1372.6,
+  "candidates_per_amr": 4.0,
+  "plan_ms": 8.656141045025183,
+  "per_seed": [
+    {
+      "worker_collisions": 0.0,
+      "completion": 1.0,
+      "progress": 1.0,
+      "min_clearance": 0.5929485139959833,
+      "makespan": 401.0,
+      "makespan_censored": 0.0,
+      "stop_ratio": 0.12675018422991893,
+      "shield_rate": 0.156963890935888,
+      "control_frames": 1357.0,
+      "candidates_per_amr": 4.0,
+      "plan_ms": 8.973036290574653
+    },
+    {
+      "worker_collisions": 0.0,
+      "completion": 1.0,
+      "progress": 1.0,
+      "min_clearance": 0.5929485139959833,
+      "makespan": 401.0,
+      "makespan_censored": 0.0,
+      "stop_ratio": 0.1293166789125643,
+      "shield_rate": 0.1609110947832476,
+      "control_frames": 1361.0,
+      "candidates_per_amr": 4.0,
+      "plan_ms": 9.253666135633207
+    },
+    {
+      "worker_collisions": 0.0,
+      "completion": 1.0,
+      "progress": 1.0,
+      "min_clearance": 0.5929485139959833,
+      "makespan": 401.0,
+      "makespan_censored": 0.0,
+      "stop_ratio": 0.12886597938144329,
+      "shield_rate": 0.15832106038291605,
+      "control_frames": 1358.0,
+      "candidates_per_amr": 4.0,
+      "plan_ms": 8.211743683906596
+    },
+    {
+      "worker_collisions": 0.0,
+      "completion": 1.0,
+      "progress": 1.0,
+      "min_clearance": 0.5929485139959833,
+      "makespan": 401.0,
+      "makespan_censored": 0.0,
+      "stop_ratio": 0.12831858407079647,
+      "shield_rate": 0.1570796460176991,
+      "control_frames": 1356.0,
+      "candidates_per_amr": 4.0,
+      "plan_ms": 8.264532405987016
+    },
+    {
+      "worker_collisions": 0.0,
+      "completion": 1.0,
+      "progress": 1.0,
+      "min_clearance": 0.5929485139959833,
+      "makespan": 401.0,
+      "makespan_censored": 0.0,
+      "stop_ratio": 0.17330538085255065,
+      "shield_rate": 0.19986023759608665,
+      "control_frames": 1431.0,
+      "candidates_per_amr": 4.0,
+      "plan_ms": 8.577726709024448
+    }
+  ]
+}

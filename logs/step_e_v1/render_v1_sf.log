@@ -3,4 +3,4 @@
 /home/nanli/.local/lib/python3.10/site-packages/torch/nn/modules/transformer.py:502: UserWarning: The PyTorch API of nested tensors is in prototype stage and will change in the near future. (Triggered internally at ../aten/src/ATen/NestedTensorImpl.cpp:178.)
   output = torch._nested_tensor_from_mask(
 saved -> /home/nanli/path_planning_ws/outputs/8_step_e_v1_module/demos/demo_v1.mp4
-  completion 83%  collisions 1  stop 1.6%  shield 28.0%  plan 33.1 ms
+  completion 100%  collisions 0  stop 2.8%  shield 57.0%  plan 62.8 ms

@@ -1,2 +1,2 @@
-saved -> outputs/step_e_v1_stopgo_demo.mp4
-  completion 83%  collisions 0  stop 58.9%  shield 58.9%  plan 12.2 ms
+saved -> /home/nanli/path_planning_ws/outputs/8_step_e_v1_module/demos/demo_stopgo.mp4
+  completion 83%  collisions 0  stop 58.9%  shield 58.9%  plan 12.7 ms
