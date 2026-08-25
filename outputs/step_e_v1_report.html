@@ -363,24 +363,24 @@
 
   <div class="tiles">
     <div class="tile">
-      <div class="tile-k">V0 collisions</div>
+      <div class="tile-k">Collisions, all three</div>
       <div class="tile-v">0.00</div>
-      <div class="tile-n">100% completion, 5 seeds</div>
+      <div class="tile-n">safety is the shield's job</div>
     </div>
     <div class="tile">
-      <div class="tile-k">V1 stop ratio</div>
-      <div class="tile-v">1.42<span style="font-size:18px">%</span></div>
-      <div class="tile-n">from V0's 3.30%, safety intact</div>
+      <div class="tile-k">Stop ratio</div>
+      <div class="tile-v">59 <span style="font-size:17px;color:var(--ink-3)">&rarr;</span> 1.4<span style="font-size:18px">%</span></div>
+      <div class="tile-n">stop-and-go &rarr; V1</div>
     </div>
     <div class="tile">
-      <div class="tile-k">Rollouts / AMR</div>
-      <div class="tile-v">2.86</div>
-      <div class="tile-n">instead of 8, proposal-first</div>
+      <div class="tile-k">Makespan</div>
+      <div class="tile-v">435 <span style="font-size:17px;color:var(--ink-3)">&rarr;</span> 353</div>
+      <div class="tile-n">frames &mdash; stop-and-go is 23% longer</div>
     </div>
     <div class="tile">
       <div class="tile-k">Plan time</div>
-      <div class="tile-v">32<span style="font-size:18px">ms</span></div>
-      <div class="tile-n">per cluster, 5 Hz control</div>
+      <div class="tile-v">11&ndash;61<span style="font-size:18px">ms</span></div>
+      <div class="tile-n">all inside a 200 ms period</div>
     </div>
   </div>
 
@@ -420,51 +420,78 @@
 
   <section>
     <h2>Results</h2>
+    <div class="col">
+      <p>
+        Three rungs of one ladder, sharing everything except the action set.
+        <b>Stop-and-go</b> is the classic industrial controller: same observation, same TTC
+        priority order, same shield, same commands, but the action set is cut to
+        <span class="mono">{GO at full speed on the path, STOP and wait}</span> &mdash; no
+        speed modulation, no lateral shift, no reverse. <b>V0</b> adds continuous speed
+        control and one metre of lateral freedom. <b>V1</b> replaces V0's nominal proposal
+        with the learned one.
+      </p>
+    </div>
     <div class="scroll">
       <table>
         <thead>
           <tr>
             <th>metric</th>
+            <th>STOP-GO</th>
             <th class="v0col">V0</th>
-            <th class="v1col">V1 proposal-first</th>
             <th class="v1col">V1 safety-first</th>
+            <th class="v1col">V1 proposal-first</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td>worker collisions</td><td class="best">0.00</td><td class="worst">0.40</td><td class="best">0.00</td></tr>
-          <tr><td>completion&nbsp;%</td><td class="best">100.0</td><td class="worst">93.3</td><td class="best">100.0</td></tr>
-          <tr><td>path progress&nbsp;%</td><td>100.0</td><td>96.7</td><td>100.0</td></tr>
-          <tr><td>stop ratio&nbsp;%</td><td>3.30</td><td class="best">0.76</td><td class="best">1.42</td></tr>
-          <tr><td>route deviation&nbsp;m</td><td>0.038</td><td>0.084</td><td>0.073</td></tr>
-          <tr><td>AMR-frames replanning</td><td>328</td><td>273</td><td>302</td></tr>
-          <tr><td>candidate rollouts / AMR</td><td>8.00</td><td class="best">2.86</td><td>8.00</td></tr>
-          <tr><td>plan time&nbsp;ms</td><td class="best">32.5</td><td>39.9</td><td>61.4</td></tr>
+          <tr><td>worker collisions</td><td class="best">0.00</td><td class="best">0.00</td><td class="best">0.00</td><td class="worst">0.40</td></tr>
+          <tr><td>completion&nbsp;%</td><td class="best">100</td><td class="best">100</td><td class="best">100</td><td class="worst">93.3</td></tr>
+          <tr><td>makespan [frames]</td><td class="worst">435.0</td><td class="best">352.6</td><td>354.8</td><td>censored</td></tr>
+          <tr><td>stop ratio&nbsp;%</td><td class="worst">59.04</td><td>3.30</td><td>1.42</td><td class="best">0.76</td></tr>
+          <tr><td>route deviation&nbsp;m</td><td>0.000</td><td>0.038</td><td>0.073</td><td>0.084</td></tr>
+          <tr><td>AMR-frames replanning</td><td class="worst">519</td><td>328</td><td>302</td><td class="best">273</td></tr>
+          <tr><td>candidate rollouts / AMR</td><td class="best">2.00</td><td>8.00</td><td>8.00</td><td>2.86</td></tr>
+          <tr><td>plan time&nbsp;ms</td><td class="best">10.6</td><td>33.4</td><td>60.6</td><td>37.1</td></tr>
         </tbody>
-        <caption>Full simulator, 5 seeds &times; 420 frames. Identical shield behind all three.</caption>
+        <caption>
+          Full simulator, 5 seeds &times; 560 frames &mdash; long enough that every
+          collision-free planner reaches 100&nbsp;% completion, so the makespans are
+          comparable. Proposal-first V1 does not finish every run, so its makespan is
+          censored.
+        </caption>
       </table>
     </div>
 
     <div class="col">
-      <h3>V0 saturates the benchmark</h3>
+      <h3>Safety is the shield's job, not the planner's</h3>
       <p>
-        The deterministic planner finishes every AMR with zero collisions &mdash; at two,
-        three and four workers alike. What it spends is throughput: it halts on 3.3% of the
-        frames it controls, and overrides its own nominal "full speed, on path" proposal
-        84% of the time. That is the gap a learned proposal can close.
+        All three collision-free planners score exactly 0.00, at the same 0.278 m minimum
+        clearance. Cutting the action set down to drive-or-halt does not make the fleet less
+        safe &mdash; the space-time shield already guarantees that, at two, three and four
+        workers alike.
+      </p>
+
+      <h3>What the richer action set buys is throughput</h3>
+      <p>
+        Stop-and-go halts on <b>59&nbsp;%</b> of the AMR-frames it controls against V0's
+        3.3&nbsp;%, spends 519 AMR-frames under local control against 328, and needs
+        <b>435 frames to clear the mission against 353 &mdash; 23&nbsp;% longer</b>.
+        Continuous speed control plus one metre of lateral freedom is worth roughly a
+        quarter of the makespan here, and it costs 23 ms of planning per cluster.
       </p>
 
       <h3>What V1 buys, in two modes</h3>
       <p>
         In <b>safety-first</b> mode the learned action is one more candidate and the shield
         still picks the cheapest safe one. Safety and completion are untouched and stopping
-        falls by 57%: the policy proposes manoeuvres the shield accepts more often than
-        V0's nominal one.
+        more than halves again (3.30&nbsp;% &rarr; 1.42&nbsp;%), with 8&nbsp;% fewer
+        AMR-frames spent under local control. The makespan matches V0's: the win is smoother
+        motion, not a shorter mission.
       </p>
       <p>
         In <b>proposal-first</b> mode &mdash; the specification's V1 flow, where the policy's
         own action executes whenever it is safe &mdash; stopping drops further still, and a
         good proposal makes the backup set unnecessary: <b>2.86 candidate rollouts per AMR
-        instead of 8</b>. The cost is 0.4 collisions per run. A small imitation error is
+        instead of 8</b>. The cost is 0.4 collisions per run: a small imitation error is
         unforgiving in a simulator where workers walk into whatever stands in their way.
       </p>
     </div>

@@ -1,0 +1,18 @@
+
+seeds=[0, 1, 2, 3, 4] frames=560 amrs=6 workers=2
+========================================
+metric                           STOP-GO
+----------------------------------------
+worker collisions                  0.000
+completion %                     100.000
+path progress %                  100.000
+min clearance [m]                  0.278
+stop ratio %                      59.043
+shield override %                 59.043
+no-safe-candidate %               17.315
+route deviation [m]                0.000
+AMR-frames replanned             518.600
+rollouts per AMR                   2.000
+plan time [ms]                    13.139
+========================================
+saved -> /home/nanli/path_planning_ws/outputs/step_e_v1_stopgo_560.json

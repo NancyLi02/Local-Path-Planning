@@ -8,5 +8,5 @@ replanning, behind a space-time reservation safety shield.
 """
 __all__ = ["config", "cluster_state", "observation_builder", "attention_policy",
            "action_decoder", "trajectory_rollout", "safety_shield", "commands",
-           "planner_base", "v0_planner", "v1_planner", "runtime", "env",
+           "planner_base", "stopgo_planner", "v0_planner", "v1_planner", "runtime", "env",
            "evaluate", "sweep", "render", "plot_curve", "worker_cache"]

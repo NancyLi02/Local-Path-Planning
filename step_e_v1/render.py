@@ -188,7 +188,7 @@ def build(snaps, rt, planner_kind, out_path, fps=12):
 
 def main(argv=None):
     pa = argparse.ArgumentParser(description=__doc__)
-    pa.add_argument("--planner", choices=["v0", "v1"], default="v0")
+    pa.add_argument("--planner", choices=["stopgo", "v0", "v1"], default="v0")
     pa.add_argument("--model", default=None)
     pa.add_argument("--seed", type=int, default=0)
     pa.add_argument("--frames", type=int, default=300)

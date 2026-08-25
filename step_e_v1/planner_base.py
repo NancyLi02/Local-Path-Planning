@@ -86,6 +86,13 @@ class ShieldedReplanner:
     def propose_actions(self, cluster, worker_predictions, map_data) -> dict:
         raise NotImplementedError
 
+    def candidate_actions(self, agent, a0):
+        """Candidate set expanded around one proposal. Planners override this
+        to change the action set without touching the rollout or the shield."""
+        cfg = self.config
+        return (generate_backup_candidates(a0, cfg)
+                if cfg.use_backup_candidates else [a0, np.zeros(3)])
+
     def priority_score(self, agent) -> float:
         """Higher = plans (and reserves space) first."""
         c = self.config
@@ -113,8 +120,7 @@ class ShieldedReplanner:
             a0 = np.asarray(proposals[agent.id], dtype=float)
 
             def build(agent=agent, a0=a0):
-                acts = (generate_backup_candidates(a0, cfg)
-                        if cfg.use_backup_candidates else [a0, np.zeros(3)])
+                acts = self.candidate_actions(agent, a0)
                 return [(a, rollout_action(agent, a, cfg.horizon_sec, dt, cfg, map_data))
                         for a in acts]
 

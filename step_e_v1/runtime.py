@@ -92,6 +92,7 @@ class StepERuntime:
         self.control: dict[str, ControlState] = {}
         self.locks: list[dict] = []
         self.logs: list[FrameLog] = []
+        self.done_frame: dict[str, int] = {}     # when each AMR finished
         self.newly_formed: list[dict] = []
         self.last_results: dict[str, ConflictResult] = {}
         self.last_worker_predictions = None
@@ -281,6 +282,10 @@ class StepERuntime:
             else:
                 a.step(self.dt)
 
+        for a in self.amrs:
+            if a.name not in self.done_frame and a.is_done():
+                self.done_frame[a.name] = frame
+
         self.logs.append(log)
         return dict(worker_data=wd, results=results, clusters=clusters,
                     locks=list(self.locks), log=log)
@@ -323,7 +328,14 @@ class StepERuntime:
     def metrics(self, min_clear: float = float("inf")) -> dict:
         controlled = [l for l in self.logs if l.n_controlled > 0]
         n_ctrl = sum(l.n_controlled for l in controlled)
+        # Makespan: the frame the LAST AMR finished. Censored at the horizon
+        # when some AMR never got there, so it is only comparable between runs
+        # that all reach 100 % completion.
+        finished = all(a.is_done() for a in self.amrs)
+        makespan = (max(self.done_frame.values()) if self.done_frame else 0)
         return dict(
+            makespan=float(makespan if finished else len(self.logs)),
+            makespan_censored=float(0.0 if finished else 1.0),
             completion=float(np.mean([a.is_done() for a in self.amrs])),
             worker_collisions=int(sum(a.collided for a in self.amrs)),
             progress=float(np.mean([a.progress / a.total_length for a in self.amrs])),

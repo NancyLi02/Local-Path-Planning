@@ -1,0 +1,19 @@
+
+seeds=[0, 1, 2, 3, 4] frames=560 amrs=6 workers=2
+========================================
+metric                                V0
+----------------------------------------
+worker collisions                  0.000
+completion %                     100.000
+path progress %                  100.000
+min clearance [m]                  0.278
+makespan [frames]                352.600
+stop ratio %                       3.300
+shield override %                 83.964
+no-safe-candidate %               24.275
+route deviation [m]                0.038
+AMR-frames replanned             328.400
+rollouts per AMR                   8.000
+plan time [ms]                    36.810
+========================================
+saved -> /home/nanli/path_planning_ws/outputs/step_e_v1_v0_baseline.json

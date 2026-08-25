@@ -24,6 +24,7 @@ step_e_v1/
 ├── safety_shield.py         the four checks, candidate cost J, joint selection
 ├── commands.py              Command, trajectory_to_command
 ├── planner_base.py          shared rollout -> backups -> shield -> dispatch loop
+├── stopgo_planner.py        StopAndGoReplanner      (drive-or-halt baseline)
 ├── v0_planner.py            V0SequentialReplanner   (TTC-priority baseline)
 ├── v1_planner.py            V1AttentionReplanner    (learned proposals)
 ├── runtime.py               A->D pipeline + Step E + command tracking (closed loop)
@@ -126,34 +127,50 @@ acceleration bug in item 3:
 
 ## Results
 
-Full simulator, 5 seeds, 420 frames, 6 AMRs, 2 workers. Identical safety shield
-behind every planner; V1 uses `logs/step_e_v1/v1_best.pt`.
+Full simulator, 5 seeds, 560 frames, 6 AMRs, 2 workers. Identical safety shield
+behind every planner; V1 uses `logs/step_e_v1/v1_best.pt`. The horizon is 560
+frames rather than 420 so that every planner reaches 100 % completion and the
+makespan is directly comparable.
 
-| metric                | V0 (baseline) | V1 proposal-first | V1 safety-first |
-|-----------------------|--------------:|------------------:|----------------:|
-| worker collisions     |      **0.00** |              0.40 |        **0.00** |
-| completion %          |     **100.0** |              93.3 |       **100.0** |
-| path progress %       |     **100.0** |              96.7 |       **100.0** |
-| stop ratio %          |          3.30 |          **0.76** |            1.42 |
-| route deviation [m]   |         0.038 |             0.084 |           0.073 |
-| AMR-frames replanning |           328 |               273 |             302 |
-| candidate rollouts / AMR |         8.00 |          **2.86** |            8.00 |
-| plan time [ms]        |      **32.5** |              39.9 |            61.4 |
+**STOP-GO** is the classic industrial baseline: the same observation, the same
+TTC priority order, the same shield and the same commands, with the action set
+cut down to `{GO at full speed on the path, STOP and wait}` -- no speed
+modulation, no lateral shift, no reverse, no least-unsafe fallback.
 
-* **V0 saturates this benchmark**: the TTC-priority sequential planner behind
-  the full-horizon shield finishes every AMR with zero collisions, at 2-4
-  workers alike. Its residual cost is throughput -- it stops 3.3 % of the
-  AMR-frames it controls and overrides its own nominal proposal 84 % of the
-  time.
-* **V1 safety-first** (`v1_prefer_proposal=False`, the learned action is one
-  more candidate) keeps the perfect safety and completion and **cuts stopping
-  by 57 %** (3.30 % -> 1.42 %): the attention policy proposes a manoeuvre the
-  shield accepts more often than V0's nominal "full speed, on path".
+| metric                   | STOP-GO | V0 (baseline) | V1 safety-first | V1 proposal-first |
+|--------------------------|--------:|--------------:|----------------:|------------------:|
+| worker collisions        |**0.00** |      **0.00** |        **0.00** |              0.40 |
+| completion %             | **100** |       **100** |         **100** |              93.3 |
+| makespan [frames]        |   435.0 |     **352.6** |           354.8 |     n/a, censored |
+| stop ratio %             |   59.04 |          3.30 |            1.42 |          **0.76** |
+| route deviation [m]      |   0.000 |         0.038 |           0.073 |             0.084 |
+| AMR-frames replanning    |     519 |           328 |             302 |           **273** |
+| candidate rollouts / AMR |**2.00** |          8.00 |            8.00 |              2.86 |
+| plan time [ms]           |**10.6** |          33.4 |            60.6 |              37.1 |
+
+* **Safety is the shield's job, not the planner's.** All three collision-free
+  planners score exactly 0.00 with the same minimum clearance (0.278 m). Cutting
+  the action set down to stop-and-go does not make the fleet less safe -- the
+  space-time shield already guarantees that.
+* **What the richer action set buys is throughput.** Stop-and-go halts on
+  **59 %** of the AMR-frames it controls against V0's 3.3 %, spends 519 AMR-frames
+  under local control against 328, and needs **435 frames to clear the mission
+  against 353 -- 23 % longer**. Continuous speed control plus one metre of lateral
+  freedom is worth roughly a quarter of the makespan here.
+* **V1 safety-first** (the learned action is one more candidate, shield still
+  picks the cheapest safe one) keeps the perfect safety and completion and **more
+  than halves the stopping again** (3.30 % -> 1.42 %), with 8 % fewer AMR-frames
+  spent under local control. Its makespan matches V0's (354.8 vs 352.6): the win
+  is smoother motion, not a shorter mission.
 * **V1 proposal-first** (the specification's V1 flow -- the policy's own action
-  executes whenever it is safe) stops least of all (0.76 %) and needs only
-  **2.86 candidate rollouts per AMR instead of 8**, because a good proposal
-  makes the backup set unnecessary. It costs 0.4 collisions per run: a small
-  imitation error is unforgiving in the full simulator.
+  executes whenever it is safe) stops least of all and needs only **2.86 candidate
+  rollouts per AMR instead of 8**, because a good proposal makes the backup set
+  unnecessary. It costs 0.4 collisions per run: a small imitation error is
+  unforgiving in a simulator where workers walk into whatever stands in their way.
+* **Cost of the ladder.** Planning is 10.6 ms for stop-and-go, 33.4 ms for V0 and
+  60.6 ms for V1 safety-first (network forward pass plus the full candidate
+  sweep); proposal-first V1 gets back to 37.1 ms by skipping the backups it does
+  not need. All are far inside the 200 ms control period.
 
 Training (`logs/step_e_v1/v1_train.log`, curve in
 `outputs/step_e_v1_module_training_curve.png`): behaviour cloning reaches the V0
@@ -193,7 +210,8 @@ of stop ratio for 3.4x the planning time.
 ## Reproduce
 
 ```bash
-python -m step_e_v1.evaluate --planner v0 --seeds 5               # deterministic baseline
+python -m step_e_v1.evaluate --planners stopgo,v0,v1 --seeds 5 --frames 560 \
+       --model logs/step_e_v1/v1_best.pt --set v1_prefer_proposal=False
 python -m step_e_v1.train.ppo_trainer --timesteps 25000 --lr 5e-5 --bc-coef 0.5
 python -m step_e_v1.evaluate --compare --model logs/step_e_v1/v1_best.pt --seeds 5 \
        --out outputs/step_e_v1_module_compare.json
@@ -207,12 +225,14 @@ python -m step_e_v1.render --planner v1 --model logs/step_e_v1/v1_best.pt
 ## Artifacts
 
 ```
-outputs/step_e_v1_module_compare.json          V0 vs V1, 5 seeds
+outputs/step_e_v1_module_compare3.json         STOP-GO vs V0 vs V1, 5 seeds
+outputs/step_e_v1_module_compare.json          V0 vs V1, 5 seeds (420 frames)
 outputs/step_e_v1_v1_safety_first.json         V1 safety-first mode
 outputs/step_e_v1_v1_proposal_first.json       V1 proposal-first mode
 outputs/step_e_v1_v0_baseline.json             V0 baseline
 outputs/step_e_v1_ablation.json                one-factor ablation table
 outputs/step_e_v1_module_training_curve.png    BC + PPO curve vs the V0 teacher
+outputs/step_e_v1_stopgo_demo.mp4              stop-and-go closed-loop demo
 outputs/step_e_v1_v0_demo.mp4                  V0 closed-loop demo
 outputs/step_e_v1_v1_demo.mp4                  V1 closed-loop demo
 logs/step_e_v1/v1_{bc,best,final}.pt           checkpoints

@@ -4,20 +4,21 @@
   output = torch._nested_tensor_from_mask(
 
 seeds=[0, 1, 2, 3, 4] frames=560 amrs=6 workers=2
-========================================
-metric                                V1
-----------------------------------------
-worker collisions                  0.400
-completion %                      93.333
-path progress %                   96.724
-min clearance [m]                  0.278
-makespan [frames]                435.400
-stop ratio %                       0.763
-shield override %                 26.575
-no-safe-candidate %               23.060
-route deviation [m]                0.084
-AMR-frames replanned             272.800
-rollouts per AMR                   2.860
-plan time [ms]                    37.079
-========================================
-saved -> /home/nanli/path_planning_ws/outputs/step_e_v1_v1_proposal_first.json
+  override v1_prefer_proposal=False
+========================================================================
+metric                           STOP-GO              V0              V1
+------------------------------------------------------------------------
+worker collisions                  0.000           0.000           0.000
+completion %                     100.000         100.000         100.000
+path progress %                  100.000         100.000         100.000
+min clearance [m]                  0.278           0.278           0.278
+makespan [frames]                435.000         352.600         354.800
+stop ratio %                      59.043           3.300           1.423
+shield override %                 59.043          83.964          57.306
+no-safe-candidate %               17.315          24.275          25.984
+route deviation [m]                0.000           0.038           0.073
+AMR-frames replanned             518.600         328.400         301.600
+rollouts per AMR                   2.000           8.000           8.000
+plan time [ms]                    10.571          33.365          60.580
+========================================================================
+saved -> /home/nanli/path_planning_ws/outputs/step_e_v1_module_compare3.json

@@ -28,6 +28,7 @@ METRIC_ORDER = [
     ("completion", "completion %", 100.0, "%8.1f"),
     ("progress", "path progress %", 100.0, "%8.1f"),
     ("min_clearance", "min clearance [m]", 1.0, "%8.2f"),
+    ("makespan", "makespan [frames]", 1.0, "%8.0f"),
     ("stop_ratio", "stop ratio %", 100.0, "%8.1f"),
     ("shield_rate", "shield override %", 100.0, "%8.1f"),
     ("unsafe_rate", "no-safe-candidate %", 100.0, "%8.1f"),
@@ -42,6 +43,9 @@ def make_planner(kind: str, cfg: V1Config, model: str | None = None,
                  device: str = "cpu"):
     if kind == "v0":
         return V0SequentialReplanner(cfg)
+    if kind == "stopgo":
+        from .stopgo_planner import StopAndGoReplanner
+        return StopAndGoReplanner(cfg)
     if kind == "v1":
         from .v1_planner import V1AttentionReplanner
         from .attention_policy import MultiAMRAttentionPolicy
@@ -87,7 +91,9 @@ def print_table(columns: dict) -> None:
 
 def main(argv=None):
     pa = argparse.ArgumentParser(description=__doc__)
-    pa.add_argument("--planner", choices=["v0", "v1"], default="v0")
+    pa.add_argument("--planner", choices=["stopgo", "v0", "v1"], default="v0")
+    pa.add_argument("--planners", type=str, default=None,
+                    help="comma-separated list, e.g. stopgo,v0,v1")
     pa.add_argument("--compare", action="store_true", help="run V0 and V1 side by side")
     pa.add_argument("--model", type=str, default=None)
     pa.add_argument("--seeds", type=int, default=5)
@@ -110,10 +116,16 @@ def main(argv=None):
     cfg.validate()
 
     seeds = list(range(args.seeds))
-    kinds = ["v0", "v1"] if args.compare else [args.planner]
+    if args.planners:
+        kinds = [k.strip() for k in args.planners.split(",") if k.strip()]
+    elif args.compare:
+        kinds = ["v0", "v1"]
+    else:
+        kinds = [args.planner]
     columns = {}
+    _LABEL = {"stopgo": "STOP-GO", "v0": "V0", "v1": "V1"}
     for kind in kinds:
-        columns[kind.upper()] = run_config(kind, cfg, seeds, args.frames, args.workers,
+        columns[_LABEL.get(kind, kind.upper())] = run_config(kind, cfg, seeds, args.frames, args.workers,
                                            args.amrs, args.model, args.device)
     print(f"\nseeds={seeds} frames={args.frames} amrs={args.amrs} workers={args.workers}")
     for item in args.set:
