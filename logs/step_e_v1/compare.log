@@ -1,0 +1,22 @@
+/home/nanli/path_planning_ws/step_e_v1/v1_planner.py:36: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = torch.load(path, map_location=device)
+/home/nanli/.local/lib/python3.10/site-packages/torch/nn/modules/transformer.py:502: UserWarning: The PyTorch API of nested tensors is in prototype stage and will change in the near future. (Triggered internally at ../aten/src/ATen/NestedTensorImpl.cpp:178.)
+  output = torch._nested_tensor_from_mask(
+
+seeds=[0, 1, 2, 3, 4] frames=420 amrs=6 workers=2
+========================================================
+metric                                V0              V1
+--------------------------------------------------------
+worker collisions                  0.000           0.400
+completion %                     100.000          93.333
+path progress %                  100.000          96.724
+min clearance [m]                  0.278           0.278
+stop ratio %                       3.300           0.763
+shield override %                 83.964          26.575
+no-safe-candidate %               24.275          23.060
+route deviation [m]                0.038           0.084
+AMR-frames replanned             328.400         272.800
+rollouts per AMR                   8.000           8.000
+plan time [ms]                    32.526          45.153
+========================================================
+saved -> /home/nanli/path_planning_ws/outputs/step_e_v1_results.json

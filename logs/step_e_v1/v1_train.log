@@ -1,0 +1,40 @@
+device=cuda  harvesting cluster snapshots ...
+  20 clusters in 0.0s  sizes: {2: 20}  workers: {1: 4, 2: 8, 3: 8}
+V0 teacher: ret=   35.8 resolved=100.0% coll=0.00 shield=10% stop=0%
+stage 1 BC on 20 clusters (workers<=1): loss 0.0092
+/home/nanli/.local/lib/python3.10/site-packages/torch/nn/modules/transformer.py:502: UserWarning: The PyTorch API of nested tensors is in prototype stage and will change in the near future. (Triggered internally at ../aten/src/ATen/NestedTensorImpl.cpp:178.)
+  output = torch._nested_tensor_from_mask(
+after BC:   ret=   32.0 resolved=100.0% coll=0.00 shield=12% stop=0%
+
+--- stage 2: workers<=2  (12 clusters) ---
+  step    1024 ret=   31.2 resolved=100.0% coll=0.00 shield=  12% stop=   0%   (V0 ret=35.8)
+  step    2048 ret=   33.8 resolved=100.0% coll=0.00 shield=  10% stop=   0%   (V0 ret=35.8)
+  step    3072 ret=   35.7 resolved=100.0% coll=0.00 shield=   9% stop=   0%   (V0 ret=35.8)
+  step    4096 ret=   23.2 resolved=100.0% coll=0.12 shield=  13% stop=   0%   (V0 ret=35.8)
+  step    5120 ret=   24.8 resolved=100.0% coll=0.12 shield=  12% stop=   1%   (V0 ret=35.8)
+  step    6144 ret=   21.6 resolved=100.0% coll=0.25 shield=  12% stop=   1%   (V0 ret=35.8)
+  step    7168 ret=   22.8 resolved=100.0% coll=0.12 shield=  13% stop=   1%   (V0 ret=35.8)
+  step    8192 ret=   23.3 resolved=100.0% coll=0.12 shield=  13% stop=   0%   (V0 ret=35.8)
+  step    9216 ret=   20.4 resolved=100.0% coll=0.12 shield=  14% stop=   0%   (V0 ret=35.8)
+--- stage 3: workers<=3  (20 clusters) ---
+  step   10240 ret=   18.1 resolved=100.0% coll=0.25 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   11264 ret=   18.1 resolved=100.0% coll=0.25 shield=  13% stop=   1%   (V0 ret=35.8)
+  step   12288 ret=   25.5 resolved=100.0% coll=0.12 shield=  12% stop=   0%   (V0 ret=35.8)
+  step   13312 ret=   21.3 resolved=100.0% coll=0.12 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   14336 ret=   23.6 resolved=100.0% coll=0.00 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   15360 ret=   18.2 resolved=100.0% coll=0.25 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   16384 ret=   24.4 resolved=100.0% coll=0.00 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   17408 ret=   22.0 resolved=100.0% coll=0.12 shield=  13% stop=   1%   (V0 ret=35.8)
+  step   18432 ret=   22.2 resolved=100.0% coll=0.12 shield=  14% stop=   0%   (V0 ret=35.8)
+--- stage 4: workers<=all  (20 clusters) ---
+  step   19456 ret=   22.7 resolved=100.0% coll=0.12 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   20480 ret=   22.4 resolved=100.0% coll=0.12 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   21504 ret=   18.7 resolved=100.0% coll=0.25 shield=  15% stop=   1%   (V0 ret=35.8)
+  step   22528 ret=   21.1 resolved=100.0% coll=0.12 shield=  15% stop=   1%   (V0 ret=35.8)
+  step   23552 ret=   18.1 resolved=100.0% coll=0.25 shield=  16% stop=   1%   (V0 ret=35.8)
+  step   24576 ret=   18.4 resolved=100.0% coll=0.25 shield=  15% stop=   1%   (V0 ret=35.8)
+  step   25600 ret=   21.2 resolved=100.0% coll=0.12 shield=  14% stop=   1%   (V0 ret=35.8)
+  step   26624 ret=   21.2 resolved=100.0% coll=0.12 shield=  15% stop=   1%   (V0 ret=35.8)
+  step   27648 ret=   22.7 resolved=100.0% coll=0.12 shield=  15% stop=   1%   (V0 ret=35.8)
+
+saved -> /home/nanli/path_planning_ws/logs/step_e_v1/v1_final.pt   best return 35.7 (V0 teacher 35.8)

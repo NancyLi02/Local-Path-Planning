@@ -1,0 +1,198 @@
+[
+  {
+    "label": "default",
+    "config": {},
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 328.4,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.03299586938466764,
+    "shield_rate": 0.8396405400666949,
+    "unsafe_rate": 0.24274618299061598,
+    "route_deviation": 0.03752055097290846,
+    "plan_ms": 38.53581777432054,
+    "min_worker_clearance": 0.879791877985358
+  },
+  {
+    "label": "shorter hard window (1.0 s)",
+    "config": {
+      "hard_horizon_sec": 1.0
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 231.6,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.018133303478131066,
+    "shield_rate": 0.7668196745782951,
+    "unsafe_rate": 0.09930959844752948,
+    "route_deviation": 0.08719565690611782,
+    "plan_ms": 35.94096541441704,
+    "min_worker_clearance": 0.08588684408253551
+  },
+  {
+    "label": "no detour candidates",
+    "config": {
+      "use_detour_candidates": false
+    },
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 348.0,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.040994494126828984,
+    "shield_rate": 0.853813172264878,
+    "unsafe_rate": 0.2728425219960741,
+    "route_deviation": 0.027847466669008135,
+    "plan_ms": 26.309640319376683,
+    "min_worker_clearance": 0.9242840567573486
+  },
+  {
+    "label": "no emergency reverse",
+    "config": {
+      "allow_emergency_reverse": false
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 237.2,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.07248655454640784,
+    "shield_rate": 0.7841423690402636,
+    "unsafe_rate": 0.21921888496847702,
+    "route_deviation": 0.0867827948278245,
+    "plan_ms": 34.0848990128571,
+    "min_worker_clearance": 0.21261468139256187
+  },
+  {
+    "label": "no command-consistency cost",
+    "config": {
+      "w_switch": 0.0
+    },
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 328.4,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.03299586938466764,
+    "shield_rate": 0.8396405400666949,
+    "unsafe_rate": 0.24274618299061598,
+    "route_deviation": 0.03752055097290846,
+    "plan_ms": 38.03725818147832,
+    "min_worker_clearance": 0.879791877985358
+  },
+  {
+    "label": "no lateral DOF (speed only)",
+    "config": {
+      "max_lateral_offset": 0.01
+    },
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 420.0,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.1019047619047619,
+    "shield_rate": 0.6371428571428572,
+    "unsafe_rate": 0.47000000000000003,
+    "route_deviation": 1.2345324284267314e-05,
+    "plan_ms": 40.03320919357812,
+    "min_worker_clearance": 1.2849481903435858
+  },
+  {
+    "label": "plain STOP fallback (no least-unsafe)",
+    "config": {
+      "least_unsafe_fallback": false
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.8778070175438597,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 261.6,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.35932555350823314,
+    "shield_rate": 0.7797490567693253,
+    "unsafe_rate": 0.29357725717294025,
+    "route_deviation": 0.02027578250366551,
+    "plan_ms": 36.43465242832209,
+    "min_worker_clearance": 0.05230647663754261
+  },
+  {
+    "label": "with command-consistency cost",
+    "config": {
+      "w_switch": 1.5
+    },
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 426.8,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.04739054188509027,
+    "shield_rate": 0.8827802549972426,
+    "unsafe_rate": 0.18521745824209143,
+    "route_deviation": 0.2932530428095511,
+    "plan_ms": 38.21767409483586,
+    "min_worker_clearance": 0.6864700834489776
+  },
+  {
+    "label": "tighter keep-out (0.85 m)",
+    "config": {
+      "worker_circle_clearance": 0.85
+    },
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 328.4,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.03299586938466764,
+    "shield_rate": 0.8396405400666949,
+    "unsafe_rate": 0.24274618299061598,
+    "route_deviation": 0.03752055097290846,
+    "plan_ms": 37.79660022364299,
+    "min_worker_clearance": 0.879791877985358
+  },
+  {
+    "label": "dense candidate grid",
+    "config": {
+      "candidate_grid": true
+    },
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 286.2,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.00487921747476098,
+    "shield_rate": 0.4457702945178889,
+    "unsafe_rate": 0.25706699472230354,
+    "route_deviation": 0.07094995434249281,
+    "plan_ms": 130.167966512088,
+    "min_worker_clearance": 0.9099412084998505
+  },
+  {
+    "label": "backups off (proposal + STOP)",
+    "config": {
+      "use_backup_candidates": false
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 0.0,
+    "progress": 0.9910526315789475,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 527.6,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.34002622899161605,
+    "shield_rate": 0.6440445465947828,
+    "unsafe_rate": 0.36428952452320085,
+    "route_deviation": 0.0,
+    "plan_ms": 15.184811474412129,
+    "min_worker_clearance": 1.438113403710323
+  }
+]

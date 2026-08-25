@@ -19,3 +19,6 @@ outputs/*_test.*
 
 # RL no-go table cache
 .cache/
+
+# Windows zone metadata
+*:Zone.Identifier

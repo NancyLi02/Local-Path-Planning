@@ -1,0 +1,11 @@
+device=cuda  harvesting cluster snapshots ...
+  20 clusters in 0.0s  sizes: {2: 20}  workers: {1: 4, 2: 8, 3: 8}
+V0 teacher: ret=   33.2 resolved=100.0% coll=0.25 shield=6% stop=0%
+stage 1 BC on 20 clusters (workers<=1): loss 0.0048
+after BC:   ret=   32.3 resolved=100.0% coll=0.12 shield=7% stop=0%
+
+--- stage 2: workers<=2  (12 clusters) ---
+  step    2048 ret=   30.8 resolved=100.0% coll=0.00 shield=   8% stop=   0%   (V0 ret=33.2)
+  step    4096 ret=   18.5 resolved=100.0% coll=0.25 shield=   8% stop=   1%   (V0 ret=33.2)
+  step    6144 ret=   13.9 resolved= 81.2% coll=0.12 shield=  10% stop=   0%   (V0 ret=33.2)
+  step    8192 ret=   15.9 resolved= 75.0% coll=0.00 shield=  13% stop=   1%   (V0 ret=33.2)

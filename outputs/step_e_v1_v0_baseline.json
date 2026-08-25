@@ -1,0 +1,88 @@
+{
+  "V0": {
+    "completion": 1.0,
+    "worker_collisions": 0.0,
+    "progress": 1.0,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 426.8,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.04739054188509027,
+    "shield_rate": 0.8827802549972426,
+    "unsafe_rate": 0.18521745824209143,
+    "route_deviation": 0.2932530428095511,
+    "plan_ms": 31.854725048842973,
+    "min_worker_clearance": 0.6864700834489776,
+    "per_seed": [
+      {
+        "completion": 1.0,
+        "worker_collisions": 0,
+        "progress": 1.0,
+        "min_clearance": 0.2784460660540709,
+        "control_frames": 414,
+        "n_clusters": 2,
+        "stop_ratio": 0.021739130434782608,
+        "shield_rate": 0.8816425120772947,
+        "unsafe_rate": 0.19806763285024154,
+        "route_deviation": 0.2725252082242459,
+        "plan_ms": 31.53928479514434,
+        "min_worker_clearance": 0.8460892303605982
+      },
+      {
+        "completion": 1.0,
+        "worker_collisions": 0,
+        "progress": 1.0,
+        "min_clearance": 0.2784460660540709,
+        "control_frames": 418,
+        "n_clusters": 2,
+        "stop_ratio": 0.028708133971291867,
+        "shield_rate": 0.8851674641148325,
+        "unsafe_rate": 0.18421052631578946,
+        "route_deviation": 0.2772583593691145,
+        "plan_ms": 31.783314192720216,
+        "min_worker_clearance": 0.7213824086971143
+      },
+      {
+        "completion": 1.0,
+        "worker_collisions": 0,
+        "progress": 1.0,
+        "min_clearance": 0.2784460660540709,
+        "control_frames": 442,
+        "n_clusters": 2,
+        "stop_ratio": 0.09049773755656108,
+        "shield_rate": 0.8823529411764706,
+        "unsafe_rate": 0.17420814479638008,
+        "route_deviation": 0.3251774597110005,
+        "plan_ms": 32.31040321136392,
+        "min_worker_clearance": 0.5801523460554938
+      },
+      {
+        "completion": 1.0,
+        "worker_collisions": 0,
+        "progress": 1.0,
+        "min_clearance": 0.2784460660540709,
+        "control_frames": 418,
+        "n_clusters": 2,
+        "stop_ratio": 0.05980861244019139,
+        "shield_rate": 0.8755980861244019,
+        "unsafe_rate": 0.18181818181818182,
+        "route_deviation": 0.27218786778393267,
+        "plan_ms": 31.108898916966446,
+        "min_worker_clearance": 0.6711304748892212
+      },
+      {
+        "completion": 1.0,
+        "worker_collisions": 0,
+        "progress": 1.0,
+        "min_clearance": 0.2784460660540709,
+        "control_frames": 442,
+        "n_clusters": 2,
+        "stop_ratio": 0.03619909502262444,
+        "shield_rate": 0.8891402714932126,
+        "unsafe_rate": 0.18778280542986425,
+        "route_deviation": 0.3191163189594619,
+        "plan_ms": 32.53172412801994,
+        "min_worker_clearance": 0.6135959572424611
+      }
+    ]
+  }
+}

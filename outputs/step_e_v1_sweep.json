@@ -1,0 +1,230 @@
+[
+  {
+    "config": {
+      "eval_horizon_sec": 3.0,
+      "hard_horizon_sec": 1.0,
+      "v_lat_max": 0.35
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 231.66666666666666,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.0633116883116883,
+    "shield_rate": 0.7266072050554809,
+    "unsafe_rate": 0.09929342687963377,
+    "route_deviation": 0.08386858487631131,
+    "plan_ms": 38.20003687747865,
+    "min_worker_clearance": 0.08880870226724003
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 3.0,
+      "hard_horizon_sec": 1.0,
+      "v_lat_max": 0.25
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 230.66666666666666,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.06647844908714473,
+    "shield_rate": 0.7297760210803689,
+    "unsafe_rate": 0.10116694899303595,
+    "route_deviation": 0.08064334662752988,
+    "plan_ms": 38.61852058399902,
+    "min_worker_clearance": 0.03344824653236251
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 3.0,
+      "hard_horizon_sec": 1.5,
+      "v_lat_max": 0.35
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 234.0,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.08974468241201873,
+    "shield_rate": 0.7307416018675265,
+    "unsafe_rate": 0.13249242091356966,
+    "route_deviation": 0.08065127881182786,
+    "plan_ms": 39.93635985032619,
+    "min_worker_clearance": 0.2149233778270917
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 3.0,
+      "hard_horizon_sec": 1.5,
+      "v_lat_max": 0.25
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 231.66666666666666,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.0906478578892372,
+    "shield_rate": 0.7309424292182912,
+    "unsafe_rate": 0.12950315967557346,
+    "route_deviation": 0.07548945198232375,
+    "plan_ms": 39.25591718011831,
+    "min_worker_clearance": 0.2063115249377329
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 3.0,
+      "hard_horizon_sec": 2.5,
+      "v_lat_max": 0.25
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 236.33333333333334,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.11706476912441299,
+    "shield_rate": 0.7531764761972872,
+    "unsafe_rate": 0.16079644330019785,
+    "route_deviation": 0.09457585075147612,
+    "plan_ms": 40.44663659256114,
+    "min_worker_clearance": 0.35039235925626994
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 3.0,
+      "hard_horizon_sec": 2.5,
+      "v_lat_max": 0.35
+    },
+    "completion": 0.8333333333333334,
+    "worker_collisions": 1.0,
+    "progress": 0.9180952380952382,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 238.33333333333334,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.12167879704182928,
+    "shield_rate": 0.7552477057768714,
+    "unsafe_rate": 0.17063394395415074,
+    "route_deviation": 0.09473059663168247,
+    "plan_ms": 40.09167051363902,
+    "min_worker_clearance": 0.3959732461945869
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 5.0,
+      "hard_horizon_sec": 2.5,
+      "v_lat_max": 0.35
+    },
+    "completion": 0.6666666666666666,
+    "worker_collisions": 1.0,
+    "progress": 0.9091478696741855,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 345.3333333333333,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.38320627740079866,
+    "shield_rate": 0.8803077266761609,
+    "unsafe_rate": 0.12065845689871828,
+    "route_deviation": 0.0553126104699034,
+    "plan_ms": 47.6395144233449,
+    "min_worker_clearance": 0.37657458662890075
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 5.0,
+      "hard_horizon_sec": 1.5,
+      "v_lat_max": 0.25
+    },
+    "completion": 0.6666666666666666,
+    "worker_collisions": 1.0,
+    "progress": 0.9091478696741855,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 342.6666666666667,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.38716121369182593,
+    "shield_rate": 0.8715979290630204,
+    "unsafe_rate": 0.1060360652197387,
+    "route_deviation": 0.04622486085094648,
+    "plan_ms": 46.072337359331414,
+    "min_worker_clearance": 0.30657021722673716
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 5.0,
+      "hard_horizon_sec": 1.5,
+      "v_lat_max": 0.35
+    },
+    "completion": 0.6666666666666666,
+    "worker_collisions": 1.0,
+    "progress": 0.9091478696741855,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 344.3333333333333,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.38818952926637457,
+    "shield_rate": 0.8683378272104258,
+    "unsafe_rate": 0.11132176159982025,
+    "route_deviation": 0.048315071369648965,
+    "plan_ms": 47.026317840056045,
+    "min_worker_clearance": 0.3388494266252507
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 5.0,
+      "hard_horizon_sec": 1.0,
+      "v_lat_max": 0.25
+    },
+    "completion": 0.6666666666666666,
+    "worker_collisions": 1.0,
+    "progress": 0.9091478696741855,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 341.3333333333333,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.38867452110236494,
+    "shield_rate": 0.8710963626073983,
+    "unsafe_rate": 0.10450000857471146,
+    "route_deviation": 0.044947397993621074,
+    "plan_ms": 45.855708368515224,
+    "min_worker_clearance": 0.30657021722673716
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 5.0,
+      "hard_horizon_sec": 1.0,
+      "v_lat_max": 0.35
+    },
+    "completion": 0.6666666666666666,
+    "worker_collisions": 1.0,
+    "progress": 0.9091478696741855,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 343.6666666666667,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.3889444482111782,
+    "shield_rate": 0.8709940786946008,
+    "unsafe_rate": 0.10863448369380975,
+    "route_deviation": 0.047730645823188415,
+    "plan_ms": 46.49052030901913,
+    "min_worker_clearance": 0.3388494266252507
+  },
+  {
+    "config": {
+      "eval_horizon_sec": 5.0,
+      "hard_horizon_sec": 2.5,
+      "v_lat_max": 0.25
+    },
+    "completion": 0.5555555555555555,
+    "worker_collisions": 1.6666666666666667,
+    "progress": 0.8276858813700919,
+    "min_clearance": 0.2784460660540709,
+    "control_frames": 322.6666666666667,
+    "n_clusters": 2.0,
+    "stop_ratio": 0.5140628105744385,
+    "shield_rate": 0.8783045120254421,
+    "unsafe_rate": 0.16452991452991453,
+    "route_deviation": 0.035803022982451464,
+    "plan_ms": 44.545722414480686,
+    "min_worker_clearance": 0.17941889355975563
+  }
+]

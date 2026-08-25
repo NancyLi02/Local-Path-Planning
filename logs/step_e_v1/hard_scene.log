@@ -1,0 +1,32 @@
+
+seeds=[0, 1, 2] frames=420 amrs=6 workers=4
+========================================
+metric                                V0
+----------------------------------------
+worker collisions                  0.000
+completion %                     100.000
+path progress %                  100.000
+min clearance [m]                  0.278
+stop ratio %                       0.856
+shield override %                 83.264
+no-safe-candidate %               27.995
+route deviation [m]                0.038
+AMR-frames replanned             391.000
+plan time [ms]                    47.687
+========================================
+
+seeds=[0, 1, 2] frames=500 amrs=6 workers=4
+========================================
+metric                                V0
+----------------------------------------
+worker collisions                  0.000
+completion %                     100.000
+path progress %                  100.000
+min clearance [m]                  0.278
+stop ratio %                       0.856
+shield override %                 83.264
+no-safe-candidate %               27.995
+route deviation [m]                0.038
+AMR-frames replanned             391.000
+plan time [ms]                    48.241
+========================================

@@ -1,0 +1,21 @@
+device=cuda  harvesting cluster snapshots ...
+  20 clusters in 109.1s  sizes: {2: 20}  workers: {1: 4, 2: 8, 3: 8}
+V0 teacher: ret=   35.8 resolved=100.0% coll=0.00 shield=10% stop=0%
+stage 1 BC on 20 clusters (workers<=1): loss 0.0169
+/home/nanli/.local/lib/python3.10/site-packages/torch/nn/modules/transformer.py:502: UserWarning: The PyTorch API of nested tensors is in prototype stage and will change in the near future. (Triggered internally at ../aten/src/ATen/NestedTensorImpl.cpp:178.)
+  output = torch._nested_tensor_from_mask(
+after BC:   ret=   35.7 resolved=100.0% coll=0.00 shield=9% stop=0%
+
+--- stage 2: workers<=2  (12 clusters) ---
+  step    1024 ret=   33.5 resolved=100.0% coll=0.00 shield=  11% stop=   0%   (V0 ret=35.8)
+  step    2048 ret=   31.7 resolved=100.0% coll=0.00 shield=  13% stop=   0%   (V0 ret=35.8)
+  step    3072 ret=   27.3 resolved=100.0% coll=0.00 shield=  14% stop=   0%   (V0 ret=35.8)
+  step    4096 ret=   23.3 resolved= 93.8% coll=0.12 shield=  14% stop=   0%   (V0 ret=35.8)
+  step    5120 ret=   16.4 resolved= 87.5% coll=0.25 shield=  14% stop=   0%   (V0 ret=35.8)
+  step    6144 ret=   14.6 resolved= 75.0% coll=0.00 shield=  20% stop=   1%   (V0 ret=35.8)
+  step    7168 ret=   15.8 resolved= 81.2% coll=0.12 shield=  17% stop=   0%   (V0 ret=35.8)
+  step    8192 ret=   13.8 resolved= 75.0% coll=0.00 shield=  19% stop=   1%   (V0 ret=35.8)
+  step    9216 ret=   14.8 resolved= 75.0% coll=0.00 shield=  19% stop=   2%   (V0 ret=35.8)
+--- stage 3: workers<=3  (20 clusters) ---
+  step   10240 ret=   16.1 resolved= 75.0% coll=0.00 shield=  15% stop=   0%   (V0 ret=35.8)
+  step   11264 ret=   17.7 resolved= 75.0% coll=0.00 shield=  15% stop=   1%   (V0 ret=35.8)
