@@ -35,6 +35,17 @@ def _web_video(name: str) -> str:
     return base64.b64encode(dst.read_bytes()).decode()
 
 
+def _framework_png() -> str:
+    """The project's framework diagram, downscaled for the web, as a data URI."""
+    src = _REPO / "overall_framework.png"
+    dst = _MOD / "web" / "framework.png"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+                        "-vf", "scale=1800:-1", str(dst)], check=True)
+    return base64.b64encode(dst.read_bytes()).decode()
+
+
 def _load(name: str, key: str | None = None) -> dict:
     data = json.loads((_MOD / "results" / f"{name}.json").read_text())
     return data[key] if key else data
@@ -56,51 +67,77 @@ ROWS = [
     ("makespan [frames]", "makespan", 1.0, "{:.1f}", "min"),
     ("stop ratio %", "stop_ratio", 100.0, "{:.2f}", "min"),
     ("min clearance [m]", "min_clearance", 1.0, "{:.3f}", "max"),
-    ("candidates / AMR", "candidates_per_amr", 1.0, "{:.0f}", None),
     ("plan time [ms]", "plan_ms", 1.0, "{:.1f}", "min"),
 ]
 
+# What each planner IS, before any result is quoted.
+METHOD_ROWS = [
+    ("what it may do", "drive or halt", "+ slow down", "+ step aside"),
+    ("degrees of freedom", "speed, on/off", "speed, 4 steps",
+     "speed, continuous &middot; lateral &plusmn;1 m"),
+    ("action", "GO / STOP", "factor 1 &middot; &#8532; &middot; &#8531; &middot; 0",
+     "(goal_fwd, goal_lat, speed_scale)"),
+    ("who chooses it", "fixed rule", "fixed rule, fastest admissible",
+     "attention policy proposes"),
+    ("candidates per AMR", "2", "4", "8 &mdash; proposal + 7 backups"),
+    ("trajectory model", "rail rollout, 5 s", "rail rollout, 5 s",
+     "2D rollout, 3 s, accel-limited"),
+    ("shield checks", "worker tube, peers", "worker tube, peers, static map",
+     "+ kinematic feasibility"),
+    ("coordination", "space-time reservation, TTC order",
+     "space-time reservation, TTC order", "+ self-attention across the cluster"),
+    ("planned as", "every active AMR, every frame", "every active AMR, every frame",
+     "conflict cluster of N &#8804; 4"),
+    ("command emitted", "target speed", "target speed",
+     "waypoints + speed + limit"),
+    ("learned component", "none", "none",
+     "cloned from the deterministic planner, then PPO"),
+    ("worst case", "stop and wait", "stop and wait", "stop and wait&#8239;*"),
+]
 
-def table(n: dict) -> str:
+
+def method_table() -> str:
+    head = ("<tr><th>method</th><th>stop-and-go</th><th>rail V0</th>"
+            "<th>V1 safety-first</th></tr>")
+    body = "".join(
+        f'<tr><td>{lab}</td><td class="txt">{a}</td><td class="txt">{b}</td>'
+        f'<td class="txt">{c}</td></tr>' for lab, a, b, c in METHOD_ROWS)
+    return ('<div class="scroll"><table class="method-table"><thead>' + head
+            + "</thead><tbody>" + body + "</tbody><caption>"
+            "Everything below the first row is the planner itself, not a measurement. "
+            "All three sit in the same pipeline, take the same Step-A/B worker prediction "
+            "and pass the same space-time shield &mdash; they differ in what they are "
+            "allowed to propose and in who proposes it. "
+            "<b>*</b> V1's shield may still back an AMR off when it is boxed in; removing "
+            "that, so stopping really is the worst case, is open work."
+            "</caption></table></div>")
+
+
+def result_table(n: dict) -> str:
     cols = ["stopgo", "rail", "v1"]
     head = ("<tr><th>metric</th><th>stop-and-go</th><th>rail V0</th>"
             "<th>V1 safety-first</th></tr>")
-    body = ['<tr><td>what it may do</td><td class="txt">drive or halt</td>'
-            '<td class="txt">+ slow down</td><td class="txt">+ step aside</td></tr>']
+    body = []
     for label, key, scale, fmt, better in ROWS:
         vals = [n[c][key] * scale for c in cols]
-        mark = None
-        if better == "min":
-            mark = min(range(3), key=lambda i: vals[i])
-        elif better == "max":
-            mark = max(range(3), key=lambda i: vals[i])
+        best_v = (min(vals) if better == "min" else max(vals)) if better else None
+        worst_v = (max(vals) if better == "min" else min(vals)) if better else None
         cells = []
-        for i, v in enumerate(vals):
-            best = mark is not None and abs(v - vals[mark]) < 1e-9
-            worst = (better is not None and not best
-                     and abs(v - (max(vals) if better == "min" else min(vals))) < 1e-9)
-            cls = "best" if best else ("worst" if worst else "")
+        for v in vals:
+            cls = ""
+            if better and abs(v - best_v) < 1e-9:
+                cls = "best"
+            elif better and abs(v - worst_v) < 1e-9:
+                cls = "worst"
             cells.append(f'<td class="{cls}">{fmt.format(v)}</td>')
         body.append(f"<tr><td>{label}</td>{''.join(cells)}</tr>")
-    return ("<div class=\"scroll\"><table><thead>" + head + "</thead><tbody>"
+    return ('<div class="scroll"><table><thead>' + head + "</thead><tbody>"
             + "".join(body) + "</tbody><caption>"
             "5 seeds &times; 560 frames, 6 AMRs and 2 workers &mdash; long enough that all "
             "three finish every mission, so the makespans compare directly. Rail V0 runs in "
             "its own pipeline, which shields every AMR every frame and has no cluster "
             "hand-over; that is also why its clearance is larger."
             "</caption></table></div>")
-
-
-def stats(n: dict, col: str) -> str:
-    d = n[col]
-    cells = [("collisions", f"{d['worker_collisions']:.2f}"),
-             ("completion", f"{d['completion'] * 100:.0f}%"),
-             ("makespan", f"{d['makespan']:.0f}"),
-             ("stop ratio", f"{d['stop_ratio'] * 100:.1f}%"),
-             ("plan time", f"{d['plan_ms']:.1f} ms")]
-    inner = "".join(f'<div class="stat"><div class="stat-k">{k}</div>'
-                    f'<div class="stat-v">{v}</div></div>' for k, v in cells)
-    return f'<div class="stats">{inner}</div>'
 
 
 def video(name: str, caption: str) -> str:
@@ -154,6 +191,11 @@ STYLE = """<style>
   .rung { font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600;
           color:var(--signal); letter-spacing:.1em; }
   .role { font-size:15.5px; color:var(--ink-3); margin:0 0 20px; }
+  .wrap > section > img { width:100%; border:1px solid var(--rule); border-radius:4px;
+                          background:#fff; display:block; box-shadow:var(--shadow); }
+  table.method-table td { white-space:normal; }
+  table.method-table td:not(:first-child) { text-align:left; }
+  table.method-table tbody tr:first-child td { background:var(--panel-2); font-weight:600; }
   figure { margin:4px 0 26px; }
   figure svg { width:100%; max-width:100%; height:auto; display:block; }
   figcaption { font-size:13.5px; color:var(--ink-3); margin-top:10px; max-width:78ch; }
@@ -204,7 +246,16 @@ HEAD = ('<title>Three Ways to Yield</title>\n'
 
 def build() -> Path:
     n = numbers()
-    html = HEAD + f'''
+    parts = dict(
+        framework=_framework_png(), method_table=method_table(),
+        result_table=result_table(n), stopgo=stopgo(), rail=rail(), v1=v1(),
+        vid_stopgo=video("demo_stopgo", "seed 0, 420 frames &mdash; AMRs queue at the "
+                         "busy-area boundary and wait the workers out"),
+        vid_rail=video("demo_rail_v0", "seed 0, 420 frames &mdash; AMRs ease off and let "
+                       "workers cross instead of stopping dead"),
+        vid_v1=video("demo_v1", "seed 0, 420 frames &mdash; cluster members slide around "
+                     "the worker and rejoin their lane"))
+    html = HEAD + '''
 <div class="wrap">
   <header class="masthead">
     <div class="eyebrow">Step E &mdash; centralized local replanning</div>
@@ -218,48 +269,67 @@ def build() -> Path:
   </header>
 
   <section style="margin-top:0">
-    <h2>At a glance</h2>
-    {table(n)}
+    <h2>Where this sits</h2>
+    <img src="data:image/png;base64,{framework}" alt="Automated factory AMR centralized local
+         path planning framework: input layer, global route planner, the centralized local
+         planning layer with steps A to E, control command dispatch, and the onboard execution
+         and safety layer.">
     <div class="col">
-      <p style="margin-top:24px">
-        All three are collision-free: safety is the shield's job, not the planner's. What
-        separates them is the price they pay for it &mdash; how often an AMR has to come to a
-        full stop, and how long the fleet takes to finish.
+      <p style="margin-top:20px">
+        The fleet already has a global route planner: every AMR follows a QR-code road network
+        from its start to its goal. Layer&nbsp;3 is what runs while it drives &mdash; predict
+        where each worker is going (A), inflate that into a no-go region (B), find which AMRs
+        it touches (C), group them into a conflict cluster (D), and replan inside that cluster
+        against a space-time reservation (E).
+      </p>
+      <p>
+        <b>This page is about E.</b> What it emits is layer&nbsp;4 &mdash; local waypoints, a
+        target speed and a speed limit, or a lane-shift, stop or detour command. The three
+        planners below differ only in which of those commands they are allowed to emit, and in
+        who decides.
       </p>
     </div>
   </section>
 
   <section>
-    <h2>The three planners</h2>
+    <h2>The three planners, as methods</h2>
+    {method_table}
+  </section>
+
+  <section>
+    <h2>How each one decides</h2>
 
     <div class="method">
       <div class="method-head"><span class="rung">01</span><h3>Stop-and-go</h3></div>
       <p class="role">The classic industrial controller: drive, or halt and wait.</p>
-      {stopgo()}
-      {stats(n, "stopgo")}
-      {video("demo_stopgo", "seed 0, 420 frames &mdash; AMRs queue at the busy-area boundary and wait the workers out")}
+      {stopgo}
+      {vid_stopgo}
     </div>
 
     <div class="method">
       <div class="method-head"><span class="rung">02</span><h3>Rail V0</h3></div>
       <p class="role">Speed control along a fixed rail &mdash; the original Step-5 planner, run unchanged.</p>
-      {rail()}
-      {stats(n, "rail")}
-      {video("demo_rail_v0", "seed 0, 420 frames &mdash; AMRs ease off and let workers cross instead of stopping dead")}
+      {rail}
+      {vid_rail}
     </div>
 
     <div class="method">
       <div class="method-head"><span class="rung">03</span><h3>V1, safety-first</h3></div>
       <p class="role">An attention policy proposes; the shield still commits the cheapest safe candidate.</p>
-      {v1()}
-      {stats(n, "v1")}
-      {video("demo_v1", "seed 0, 420 frames &mdash; cluster members slide around the worker and rejoin their lane")}
+      {v1}
+      {vid_v1}
     </div>
   </section>
 
   <section>
-    <h2>What the comparison shows</h2>
+    <h2>Results</h2>
+    {result_table}
     <div class="col">
+      <p style="margin-top:24px">
+        <b>All three are collision-free.</b> Safety is the shield's job, not the planner's:
+        cutting the action set down to drive-or-halt does not make the fleet less safe, at two,
+        three and four workers alike. What separates them is the price they pay for it.
+      </p>
       <p>
         <b>Being allowed to slow down is worth 34 frames and three quarters of the stopping.</b>
         Stop-and-go halts on 59&nbsp;% of the frames it controls; the speed ladder brings that
@@ -278,9 +348,9 @@ def build() -> Path:
       <p>
         V1 is the deterministic planner of the same pipeline with its nominal proposal replaced
         by the policy's. That deterministic sibling scores 352.6 frames and a 3.30&nbsp;% stop
-        ratio, so the attention policy is not what makes the lateral manoeuvres safe &mdash; the
-        shield is &mdash; it is what more than halves the remaining stopping, at equal safety and
-        completion. Its numbers are in <code>results/v0.json</code>.
+        ratio, so the attention policy is not what makes the lateral manoeuvres safe &mdash;
+        the shield is &mdash; it is what more than halves the remaining stopping, at equal
+        safety and completion. Its numbers are in <code>results/v0.json</code>.
       </p>
     </div>
   </section>
@@ -306,9 +376,9 @@ python -m step_e_v1.report                     # rebuilds this page</pre>
   </section>
 
   <footer>step_e_v1 &middot; torch 2.5.1+cu121, RTX 4060 Laptop &middot;
-         demos rendered at 2100&nbsp;px, embedded at {_WEB_WIDTH}&nbsp;px</footer>
+         demos rendered at 2100&nbsp;px, embedded at 1400&nbsp;px</footer>
 </div>
-'''
+'''.format(**parts)
     out = _MOD / "report.html"
     out.write_text(html)
     return out
