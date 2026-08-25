@@ -57,7 +57,7 @@ Action: `(goal_fwd, goal_lat, speed_scale)` decoded with
 ## Where this implementation deviates from the specification, and why
 
 Every deviation below is switchable from `V1Config`, and each one is backed by
-a measurement in `outputs/step_e_v1_ablation.json` (V0, 5 seeds, 420 frames).
+a measurement in `outputs/8_step_e_v1_module/results/ablation.json` (V0, 5 seeds, 420 frames).
 Three earlier deviations were **withdrawn** once a bug in the manoeuvre
 kinematics was fixed — see "Withdrawn" below; that is why the ablation table is
 part of the deliverable rather than a footnote.
@@ -132,31 +132,38 @@ behind every planner; V1 uses `logs/step_e_v1/v1_best.pt`. The horizon is 560
 frames rather than 420 so that every planner reaches 100 % completion and the
 makespan is directly comparable.
 
-**STOP-GO** is the classic industrial baseline: the same observation, the same
-TTC priority order, the same shield and the same commands, with the action set
-cut down to `{GO at full speed on the path, STOP and wait}` -- no speed
-modulation, no lateral shift, no reverse, no least-unsafe fallback.
+The comparison walks one ladder of action sets, everything else held fixed --
+same observation, same TTC priority order, same shield, same commands:
 
-| metric                   | STOP-GO | V0 (baseline) | V1 safety-first | V1 proposal-first |
-|--------------------------|--------:|--------------:|----------------:|------------------:|
-| worker collisions        |**0.00** |      **0.00** |        **0.00** |              0.40 |
-| completion %             | **100** |       **100** |         **100** |              93.3 |
-| makespan [frames]        |   435.0 |     **352.6** |           354.8 |     n/a, censored |
-| stop ratio %             |   59.04 |          3.30 |            1.42 |          **0.76** |
-| route deviation [m]      |   0.000 |         0.038 |           0.073 |             0.084 |
-| AMR-frames replanning    |     519 |           328 |             302 |           **273** |
-| candidate rollouts / AMR |**2.00** |          8.00 |            8.00 |              2.86 |
-| plan time [ms]           |**10.6** |          33.4 |            60.6 |              37.1 |
+| rung | action set |
+|---|---|
+| **STOP-GO** | `{GO at full speed on the path, STOP and wait}` -- the classic industrial controller |
+| **V0 speed-only** | + continuous speed modulation, still pinned to the rail |
+| **V0** | + one metre of lateral freedom (the specification's V0 candidate set, which includes left / right shift) |
+| **V1** | V0's nominal proposal replaced by the learned one |
+
+| metric                   | STOP-GO | V0 speed-only | V0 (baseline) | V1 safety-first | V1 proposal-first |
+|--------------------------|--------:|--------------:|--------------:|----------------:|------------------:|
+| worker collisions        |**0.00** |      **0.00** |      **0.00** |        **0.00** |              0.40 |
+| completion %             | **100** |       **100** |       **100** |         **100** |              93.3 |
+| makespan [frames]        |   435.0 |         361.0 |     **352.6** |           354.8 |     n/a, censored |
+| stop ratio %             |   59.04 |         10.19 |          3.30 |            1.42 |          **0.76** |
+| route deviation [m]      |   0.000 |         0.000 |         0.038 |           0.073 |             0.084 |
+| AMR-frames replanning    |     519 |           420 |           328 |             302 |           **273** |
+| candidate rollouts / AMR |**2.00** |          6.00 |          8.00 |            8.00 |              2.86 |
+| plan time [ms]           |**10.6** |          31.6 |          33.4 |            60.6 |              37.1 |
 
 * **Safety is the shield's job, not the planner's.** All three collision-free
   planners score exactly 0.00 with the same minimum clearance (0.278 m). Cutting
   the action set down to stop-and-go does not make the fleet less safe -- the
   space-time shield already guarantees that.
-* **What the richer action set buys is throughput.** Stop-and-go halts on
-  **59 %** of the AMR-frames it controls against V0's 3.3 %, spends 519 AMR-frames
-  under local control against 328, and needs **435 frames to clear the mission
-  against 353 -- 23 % longer**. Continuous speed control plus one metre of lateral
-  freedom is worth roughly a quarter of the makespan here.
+* **Speed modulation carries most of the throughput.** Going from drive-or-halt
+  to continuous speed control cuts the stop ratio 59.0 % -> 10.2 % and the
+  makespan 435 -> 361 frames, for 21 ms of extra planning.
+* **The lateral degree of freedom buys smoothness, not much time.** Adding one
+  metre of lateral freedom takes the stop ratio down again, 10.2 % -> 3.3 %, but
+  the makespan only 361 -> 353 frames. It stops the AMRs waiting; it does not
+  make the mission much shorter.
 * **V1 safety-first** (the learned action is one more candidate, shield still
   picks the cheapest safe one) keeps the perfect safety and completion and **more
   than halves the stopping again** (3.30 % -> 1.42 %), with 8 % fewer AMR-frames
@@ -173,7 +180,7 @@ modulation, no lateral shift, no reverse, no least-unsafe fallback.
   not need. All are far inside the 200 ms control period.
 
 Training (`logs/step_e_v1/v1_train.log`, curve in
-`outputs/step_e_v1_module_training_curve.png`): behaviour cloning reaches the V0
+`outputs/8_step_e_v1_module/training_curve.png`): behaviour cloning reaches the V0
 teacher (return 32.0 vs 35.8, zero collisions); PPO then briefly exceeds it
 (35.7 at 3k steps, shield override 8.5 % vs V0's 9.6 %) and afterwards decays.
 With V0 already at zero collisions and full completion, the shield-constrained
@@ -184,7 +191,7 @@ lose. Two failure modes were found and fixed along the way -- raw-space BC
 
 ## Ablations
 
-V0, 5 seeds (`outputs/step_e_v1_ablation.json`). Each row disables exactly one
+V0, 5 seeds (`outputs/8_step_e_v1_module/results/ablation.json`). Each row disables exactly one
 design decision.
 
 | configuration                        | collisions | completion % | stop % | plan ms |
@@ -225,23 +232,20 @@ python -m step_e_v1.render --planner v1 --model logs/step_e_v1/v1_best.pt
 ## Artifacts
 
 ```
-outputs/step_e_v1_module_compare3.json         STOP-GO vs V0 vs V1, 5 seeds
-outputs/step_e_v1_module_compare.json          V0 vs V1, 5 seeds (420 frames)
-outputs/step_e_v1_v1_safety_first.json         V1 safety-first mode
-outputs/step_e_v1_v1_proposal_first.json       V1 proposal-first mode
-outputs/step_e_v1_v0_baseline.json             V0 baseline
-outputs/step_e_v1_ablation.json                one-factor ablation table
-outputs/step_e_v1_module_training_curve.png    BC + PPO curve vs the V0 teacher
-outputs/step_e_v1_stopgo_demo.mp4              stop-and-go closed-loop demo
-outputs/step_e_v1_v0_demo.mp4                  V0 closed-loop demo
-outputs/step_e_v1_v1_demo.mp4                  V1 closed-loop demo
+outputs/8_step_e_v1_module/report.html              the write-up
+outputs/8_step_e_v1_module/training_curve.png      BC + PPO vs the V0 teacher
+outputs/8_step_e_v1_module/results/compare_3way.json   MAIN TABLE
+outputs/8_step_e_v1_module/results/ablation.json       one-factor ablation
+outputs/8_step_e_v1_module/results/{stopgo,v0,v0_speed_only}.json
+outputs/8_step_e_v1_module/results/v1_{safety,proposal}_first.json
+outputs/8_step_e_v1_module/demos/demo_{stopgo,v0,v1}.mp4
 logs/step_e_v1/v1_{bc,best,final}.pt           checkpoints
 logs/step_e_v1/v1_train.log                    training log (dropout disabled)
 logs/step_e_v1/ppo_dropout_run.log             the dropout failure, kept as evidence
 logs/step_e_v1/vanilla_ppo_run.log             PPO without the behaviour anchor
 ```
 
-The files named `outputs/step_e_v1_results.json`,
-`outputs/step_e_v1_training_curve.png` and `outputs/step_e_v1_replanning_demo.mp4`
-belong to the EARLIER speed-only Step-E V1 in `Centralized_Local_Planner/rl/`
-and are left untouched.
+The earlier Step-E attempts live in `outputs/5_step_e_rail_v0_speed/`,
+`6_step_e_rail_v1_rl/` and `7_step_e_spatial/` and are untouched by this
+package -- see `outputs/README.md`. Note that the *rail* V1 in folder 6 and
+this module's V1 are different methods that were both called "V1".

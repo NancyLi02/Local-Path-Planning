@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 def main():
     log = Path(sys.argv[1])
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else \
-        Path(__file__).resolve().parents[2] / "outputs" / "step_e_v1_training_curve.png"
+        Path(__file__).resolve().parents[2] / "outputs" / "6_step_e_rail_v1_rl" / "training_curve.png"
     text = log.read_text()
 
     v0 = None

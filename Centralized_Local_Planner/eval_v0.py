@@ -9,7 +9,7 @@ Usage::
     python -m Centralized_Local_Planner.eval_v0                # default 6 AMR / 2 workers
     python -m Centralized_Local_Planner.eval_v0 --frames 280 --seeds 5
 
-Outputs a metrics table to stdout and writes ../outputs/step_e_v0_results.json.
+Outputs a metrics table to stdout and writes ../outputs/5_step_e_rail_v0_speed/results.json.
 """
 from __future__ import annotations
 
@@ -177,7 +177,8 @@ def main(argv: list[str] | None = None) -> None:
     print("=" * 78)
     print(f"total wall time: {time.time()-t0:.1f}s")
 
-    out = _outputs_dir() / "step_e_v0_results.json"
+    out = _outputs_dir() / "5_step_e_rail_v0_speed" / "results.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(dict(
         config=dict(frames=args.frames, workers=args.workers, amrs=args.amrs,

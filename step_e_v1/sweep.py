@@ -67,7 +67,7 @@ def main(argv=None):
     pa.add_argument("--jobs", type=int, default=4)
     pa.add_argument("--planner", default="v0")
     pa.add_argument("--model", default=None)
-    pa.add_argument("--out", default="outputs/step_e_v1_sweep.json")
+    pa.add_argument("--out", default="outputs/8_step_e_v1_module/results/sweep.json")
     pa.add_argument("--ablation", action="store_true",
                     help="one-factor-at-a-time ablation instead of the product grid")
     args = pa.parse_args(argv)

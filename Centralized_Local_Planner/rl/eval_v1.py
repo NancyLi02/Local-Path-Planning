@@ -95,7 +95,8 @@ def main(argv=None):
         print(f"{label:<22}{v0[k]*sc:>14.2f}{v1[k]*sc:>14.2f}{(v1[k]-v0[k])*sc:>+14.2f}")
     print("=" * 70)
 
-    out = repo / "outputs" / "step_e_v1_results.json"
+    out = repo / "outputs" / "6_step_e_rail_v1_rl" / "results.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(dict(seeds=seeds, v0=v0, v1=v1, model=args.model), indent=2))
     print(f"saved -> {out}")
 

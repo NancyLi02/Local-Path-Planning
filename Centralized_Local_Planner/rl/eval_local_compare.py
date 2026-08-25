@@ -95,7 +95,8 @@ def main(argv=None):
                          ("local_frames", "AMR-frames replanning", 1.0)]:
         print(f"{label:<22}{rule[k]*sc:>16.2f}{rl[k]*sc:>16.2f}{(rl[k]-rule[k])*sc:>+16.2f}")
     print("=" * 74)
-    out = repo / "outputs" / "step_e_local_results.json"
+    out = repo / "outputs" / "7_step_e_spatial" / "results.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(dict(seeds=seeds, rule=rule, rl=rl, model=args.model), indent=2))
     print(f"saved -> {out}")
 

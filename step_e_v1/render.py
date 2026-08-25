@@ -203,7 +203,8 @@ def main(argv=None):
     cfg = V1Config(); cfg.validate()
     snaps, rt = simulate(args.planner, cfg, args.frames, args.workers, args.amrs,
                          args.seed, args.model, args.device)
-    out = Path(args.out) if args.out else _REPO / "outputs" / f"step_e_v1_{args.planner}_demo.mp4"
+    out = (Path(args.out) if args.out else
+           _REPO / "outputs" / "8_step_e_v1_module" / "demos" / f"demo_{args.planner}.mp4")
     build(snaps, rt, args.planner, out, fps=args.fps)
     m = rt.metrics()
     print(f"saved -> {out}")

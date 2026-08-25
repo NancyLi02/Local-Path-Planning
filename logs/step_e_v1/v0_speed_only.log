@@ -1,0 +1,21 @@
+
+seeds=[0, 1, 2, 3, 4] frames=560 amrs=6 workers=2
+  override max_lateral_offset=0.01
+  override use_detour_candidates=False
+========================================
+metric                                V0
+----------------------------------------
+worker collisions                  0.000
+completion %                     100.000
+path progress %                  100.000
+min clearance [m]                  0.278
+makespan [frames]                361.000
+stop ratio %                      10.190
+shield override %                 63.714
+no-safe-candidate %               47.000
+route deviation [m]                0.000
+AMR-frames replanned             420.000
+rollouts per AMR                   6.000
+plan time [ms]                    31.631
+========================================
+saved -> /home/nanli/path_planning_ws/outputs/step_e_v1_v0_speed_only.json

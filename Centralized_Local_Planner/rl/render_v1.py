@@ -100,7 +100,7 @@ def main(argv=None):
     pa.add_argument("--workers", type=int, default=2)
     pa.add_argument("--amrs", type=int, default=6)
     pa.add_argument("--hidden", type=int, default=64)
-    pa.add_argument("--output", type=str, default="outputs/step_e_v1_replanning_demo.mp4")
+    pa.add_argument("--output", type=str, default="outputs/6_step_e_rail_v1_rl/demo.mp4")
     args = pa.parse_args(argv)
 
     repo = Path(__file__).resolve().parents[2]

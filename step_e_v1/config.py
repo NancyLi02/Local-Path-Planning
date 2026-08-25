@@ -71,7 +71,7 @@ class V1Config:
     # freezing that motivated it was really caused by a bug in the
     # acceleration limit, and once the manoeuvre kinematics were correct the
     # conservative full-horizon constraint won on every metric. See
-    # outputs/step_e_v1_ablation.json.
+    # outputs/8_step_e_v1_module/results/ablation.json.
     hard_horizon_sec: float = 5.0
     polygon_stride: int = 2            # lobe vertex downsampling for the test
 

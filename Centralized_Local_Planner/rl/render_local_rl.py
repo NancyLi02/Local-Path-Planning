@@ -76,7 +76,7 @@ def main(argv=None):
     pa.add_argument("--amrs", type=int, default=6)
     pa.add_argument("--workers", type=int, default=2)
     pa.add_argument("--hidden", type=int, default=64)
-    pa.add_argument("--output", type=str, default="outputs/step_e_local_rl_demo.mp4")
+    pa.add_argument("--output", type=str, default="outputs/7_step_e_spatial/demo_rl.mp4")
     args = pa.parse_args(argv)
     repo = Path(__file__).resolve().parents[2]
     device = "cuda" if torch.cuda.is_available() else "cpu"

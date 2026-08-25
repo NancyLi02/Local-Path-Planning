@@ -212,12 +212,13 @@ def _run_demo(step: str, args) -> None:
         print(f"Saved {step} demo to {saved}")
 
 
+# Rendered demos are filed under ../outputs/<step folder>/ -- see outputs/README.md.
 _DEFAULT_OUTPUT = {
-    "predict":  "worker_prediction_demo.mp4",
-    "safety":   "safety_inflation_demo.mp4",
-    "affected": "step_c_affected_amr_demo.mp4",
-    "cluster":  "step_d_conflict_cluster_demo.mp4",
-    "replan":   "step_e_v0_replanning_demo.mp4",
+    "predict":  "1_step_a_prediction/prediction_2workers_demo.mp4",
+    "safety":   "2_step_b_safety_inflation/safety_inflation_demo.mp4",
+    "affected": "3_step_c_affected_amr/affected_amr_demo.mp4",
+    "cluster":  "4_step_d_conflict_cluster/conflict_cluster_demo.mp4",
+    "replan":   "5_step_e_rail_v0_speed/demo.mp4",
 }
 _DEFAULT_FRAMES = {"predict": 80, "safety": 280, "affected": 280,
                    "cluster": 280, "replan": 360}

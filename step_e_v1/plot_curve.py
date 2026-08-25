@@ -18,7 +18,7 @@ _REPO = Path(__file__).resolve().parents[1]
 def main(argv=None):
     pa = argparse.ArgumentParser(description=__doc__)
     pa.add_argument("--history", default="logs/step_e_v1/v1_history.json")
-    pa.add_argument("--out", default="outputs/step_e_v1_module_training_curve.png")
+    pa.add_argument("--out", default="outputs/8_step_e_v1_module/training_curve.png")
     args = pa.parse_args(argv)
 
     path = Path(args.history) if Path(args.history).is_absolute() else _REPO / args.history

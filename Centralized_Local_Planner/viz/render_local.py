@@ -211,7 +211,7 @@ if __name__ == "__main__":
     pa.add_argument("--seed", type=int, default=7)
     pa.add_argument("--amrs", type=int, default=6)
     pa.add_argument("--workers", type=int, default=2)
-    pa.add_argument("--output", type=str, default="outputs/step_e_local_replanning_demo.mp4")
+    pa.add_argument("--output", type=str, default="outputs/7_step_e_spatial/demo_rule.mp4")
     a = pa.parse_args()
     repo = Path(__file__).resolve().parents[2]
     out = Path(a.output)
