@@ -250,8 +250,9 @@ outputs/8_step_e_v1_module/training_curve.png      BC + PPO vs the V0 teacher
 outputs/8_step_e_v1_module/results/compare_3way.json   MAIN TABLE
 outputs/8_step_e_v1_module/results/ablation.json       one-factor ablation
 outputs/8_step_e_v1_module/results/{stopgo,rail_v0,v0}.json
-outputs/8_step_e_v1_module/results/v1_{safety,proposal}_first.json
+outputs/8_step_e_v1_module/results/v1_safety_first.json
 outputs/8_step_e_v1_module/demos/demo_{stopgo,rail_v0,v0,v1}.mp4
+outputs/8_step_e_v1_module/demos/web/            900 px, embedded in report.html
 logs/step_e_v1/v1_{bc,best,final}.pt           checkpoints
 logs/step_e_v1/v1_train.log                    training log (dropout disabled)
 logs/step_e_v1/ppo_dropout_run.log             the dropout failure, kept as evidence

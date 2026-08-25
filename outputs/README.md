@@ -35,11 +35,11 @@ at Step E, in the order they were built.
 ```
 report.html                       the write-up (published artifact)
 training_curve.png                BC + PPO against the V0 teacher
-demos/demo_stopgo.mp4             stop-and-go: drive or halt
-demos/demo_rail_v0.mp4            the ORIGINAL rail V0 (folder 5_), drawn in this style
-demos/demo_v0.mp4                 V0: speed + lateral
-demos/demo_v1.mp4                 V1: learned proposal, safety-first
-demos/demo_v1_proposal_first.mp4  V1 executing its own action when safe
+demos/demo_stopgo.mp4             1. stop-and-go: drive or halt
+demos/demo_rail_v0.mp4            2. the ORIGINAL rail V0 (folder 5_), drawn in this style
+demos/demo_v1.mp4                 3. V1: learned proposal, safety-first
+demos/demo_v0.mp4                 V1's deterministic sibling, for reference
+demos/web/                        900 px versions embedded in report.html
                                   (all rendered on seed 0, 420 frames)
 results/compare_3way.json         MAIN TABLE - stop-and-go / V0 / V1, 5 seeds x 560 frames
 results/ablation.json             one-factor ablation, 10 configurations
@@ -47,8 +47,7 @@ results/stopgo.json               stop-and-go alone
 results/rail_v0.json              the original rail planner of folder 5_, run as-is
                                   via step_e_v1/legacy_rail.py
 results/v0.json                   V0 (speed + lateral), the baseline
-results/v1_safety_first.json      V1, proposal ranked among the candidates
-results/v1_proposal_first.json    V1, proposal executed whenever it is safe
+results/v1_safety_first.json      V1 -- the only V1 mode reported
 results/compare_v0_v1_420f.json   earlier V0/V1 run at the 420-frame horizon
 results/sweep_shield_params.json  exploratory sweep: shield horizons, lateral speed
 results/sweep_candidate_set.json  exploratory sweep: candidate set, AMR clearance

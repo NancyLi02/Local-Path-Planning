@@ -1,0 +1,20 @@
+
+seeds=[0, 1, 2, 3, 4] frames=560 amrs=6 workers=2
+  override eval_horizon_sec=5.0
+========================================
+metric                                V0
+----------------------------------------
+worker collisions                  2.000
+completion %                      66.667
+path progress %                   79.590
+min clearance [m]                  0.588
+makespan [frames]                560.000
+stop ratio %                      52.985
+shield override %                 95.701
+no-safe-candidate %               29.993
+route deviation [m]                0.015
+AMR-frames replanned             311.400
+rollouts per AMR                   8.000
+plan time [ms]                    34.456
+========================================
+saved -> /tmp/v0_eval5.json

@@ -110,12 +110,13 @@ class V1Config:
     # first -- the backups are built only when the proposal fails. This is
     # where a learned proposal pays off in COMPUTE, not just in quality.
     lazy_backups: bool = True
-    # Deployment mode for V1. True: execute the learned proposal whenever it is
-    # safe (the specification's V1 flow -- the policy owns efficiency).
-    # False: treat the proposal as one more candidate and let the shield pick
-    # the lowest-cost safe one, exactly as V0 does, so V1 can never be worse
-    # than V0 by construction.
-    v1_prefer_proposal: bool = True
+    # Deployment mode for V1. False (the factory setting, and the only one
+    # reported): the learned action is one more candidate and the shield still
+    # commits to the lowest-cost safe one, so V1 can never be less safe than
+    # the deterministic planner. True is the specification's "policy owns
+    # efficiency" flow; it was measured (0.40 collisions, 93.3 % completion)
+    # and is not used.
+    v1_prefer_proposal: bool = False
     use_detour_candidates: bool = True   # add full-width left/right detours
     # Dense candidate grid (speed factors x lateral offsets) instead of the
     # six named backups. Gives the deterministic baseline a far richer search,
