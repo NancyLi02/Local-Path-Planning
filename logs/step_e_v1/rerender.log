@@ -1,0 +1,10 @@
+saved -> /home/nanli/path_planning_ws/outputs/8_step_e_v1_module/demos/demo_stopgo.mp4
+  completion 83%  collisions 0  stop 58.9%  shield 58.9%  plan 11.7 ms
+saved -> /home/nanli/path_planning_ws/outputs/8_step_e_v1_module/demos/demo_rail_v0.mp4
+  completion 100%  collisions 0  stop 12.7%  plan 11.3 ms
+/home/nanli/path_planning_ws/step_e_v1/v1_planner.py:37: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = torch.load(path, map_location=device)
+/home/nanli/.local/lib/python3.10/site-packages/torch/nn/modules/transformer.py:502: UserWarning: The PyTorch API of nested tensors is in prototype stage and will change in the near future. (Triggered internally at ../aten/src/ATen/NestedTensorImpl.cpp:178.)
+  output = torch._nested_tensor_from_mask(
+saved -> /home/nanli/path_planning_ws/outputs/8_step_e_v1_module/demos/demo_v1.mp4
+  completion 100%  collisions 0  stop 2.8%  shield 57.0%  plan 59.8 ms

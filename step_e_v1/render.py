@@ -191,7 +191,14 @@ def build(snaps, rt, planner_kind, out_path, fps=12):
 
     anim = FuncAnimation(fig, update, frames=len(snaps), interval=1000 / fps, blit=False)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    anim.save(str(out_path), writer=FFMpegWriter(fps=fps, bitrate=2600))
+    # Quality-targeted encode rather than a fixed bitrate: the panel text and
+    # the thin trajectory lines are exactly what a low bitrate smears.
+    writer = FFMpegWriter(fps=fps, codec="libx264",
+                          extra_args=["-crf", "18", "-preset", "slow",
+                                      "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
+    # dpi must keep the pixel size EVEN on both axes: libx264 with yuv420p
+    # rejects an odd width, and matplotlib hands it figsize * dpi directly.
+    anim.save(str(out_path), writer=writer, dpi=120)
     plt.close(fig)
     return out_path
 

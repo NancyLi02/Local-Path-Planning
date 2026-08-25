@@ -1,5 +1,7 @@
 {
   "V1": {
+    "makespan": 354.8,
+    "makespan_censored": 0.0,
     "completion": 1.0,
     "worker_collisions": 0.0,
     "progress": 1.0,
@@ -10,11 +12,13 @@
     "shield_rate": 0.5730576322783835,
     "unsafe_rate": 0.25983966374917106,
     "route_deviation": 0.07296922152318586,
-    "plan_ms": 61.3684995996544,
+    "plan_ms": 64.94042524970654,
     "candidates_per_amr": 8.0,
     "min_worker_clearance": 0.838231744534905,
     "per_seed": [
       {
+        "makespan": 353.0,
+        "makespan_censored": 0.0,
         "completion": 1.0,
         "worker_collisions": 0,
         "progress": 1.0,
@@ -25,11 +29,13 @@
         "shield_rate": 0.569620253164557,
         "unsafe_rate": 0.2879746835443038,
         "route_deviation": 0.04902917998607591,
-        "plan_ms": 63.58572125713441,
+        "plan_ms": 63.862584561104,
         "candidates_per_amr": 8.0,
         "min_worker_clearance": 0.7293228479490117
       },
       {
+        "makespan": 356.0,
+        "makespan_censored": 0.0,
         "completion": 1.0,
         "worker_collisions": 0,
         "progress": 1.0,
@@ -40,11 +46,13 @@
         "shield_rate": 0.5674740484429066,
         "unsafe_rate": 0.23529411764705882,
         "route_deviation": 0.08798791692762775,
-        "plan_ms": 62.01978685938862,
+        "plan_ms": 67.42830127246714,
         "candidates_per_amr": 8.0,
         "min_worker_clearance": 0.7949469527502678
       },
       {
+        "makespan": 353.0,
+        "makespan_censored": 0.0,
         "completion": 1.0,
         "worker_collisions": 0,
         "progress": 1.0,
@@ -55,11 +63,13 @@
         "shield_rate": 0.5668789808917197,
         "unsafe_rate": 0.2802547770700637,
         "route_deviation": 0.05552464866793973,
-        "plan_ms": 58.09510850014232,
+        "plan_ms": 62.181020223323245,
         "candidates_per_amr": 8.0,
         "min_worker_clearance": 0.8588219616301138
       },
       {
+        "makespan": 352.0,
+        "makespan_censored": 0.0,
         "completion": 1.0,
         "worker_collisions": 0,
         "progress": 1.0,
@@ -70,11 +80,13 @@
         "shield_rate": 0.5813148788927336,
         "unsafe_rate": 0.24567474048442905,
         "route_deviation": 0.09959297716657006,
-        "plan_ms": 59.4442778176056,
+        "plan_ms": 66.6629368618008,
         "candidates_per_amr": 8.0,
         "min_worker_clearance": 0.9272709294827963
       },
       {
+        "makespan": 360.0,
+        "makespan_censored": 0.0,
         "completion": 1.0,
         "worker_collisions": 0,
         "progress": 1.0,
@@ -85,7 +97,7 @@
         "shield_rate": 0.58,
         "unsafe_rate": 0.25,
         "route_deviation": 0.07271138486771583,
-        "plan_ms": 63.69760356400103,
+        "plan_ms": 64.56728332983751,
         "candidates_per_amr": 8.0,
         "min_worker_clearance": 0.8807960308623348
       }
