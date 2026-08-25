@@ -1,0 +1,566 @@
+<title>Shielded Cluster Replanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground: #f4f6f7;
+    --panel: #ffffff;
+    --panel-2: #eceff1;
+    --ink: #14202a;
+    --ink-2: #48606f;
+    --ink-3: #7b8f9c;
+    --rule: #d3dbe0;
+    --signal: #c07800;          /* busy-area amber, from the simulator */
+    --signal-soft: #f6e9cf;
+    --v0: #55707f;
+    --v1: #1d6ea6;
+    --bad: #a92c22;
+    --good: #1a6f47;
+    --shadow: 0 1px 0 rgba(20, 32, 42, .05), 0 12px 28px -22px rgba(20, 32, 42, .5);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1418;
+      --panel: #151d23;
+      --panel-2: #1b252c;
+      --ink: #e6edf1;
+      --ink-2: #a5b8c3;
+      --ink-3: #758896;
+      --rule: #27343d;
+      --signal: #e0a338;
+      --signal-soft: #33280f;
+      --v0: #8ba5b3;
+      --v1: #57a8dd;
+      --bad: #e0776b;
+      --good: #5cbb8c;
+      --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 14px 30px -24px #000;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1418;
+    --panel: #151d23;
+    --panel-2: #1b252c;
+    --ink: #e6edf1;
+    --ink-2: #a5b8c3;
+    --ink-3: #758896;
+    --rule: #27343d;
+    --signal: #e0a338;
+    --signal-soft: #33280f;
+    --v0: #8ba5b3;
+    --v1: #57a8dd;
+    --bad: #e0776b;
+    --good: #5cbb8c;
+    --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 14px 30px -24px #000;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+  }
+  .col { max-width: 63ch; }
+
+  h1, h2, h3, .eyebrow, .tile-v, th, .chip, .mono {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--signal);
+  }
+
+  header.masthead {
+    border-bottom: 1px solid var(--rule);
+    padding: 64px 0 34px;
+    margin-bottom: 40px;
+  }
+  h1 {
+    font-size: clamp(34px, 5.2vw, 54px);
+    font-weight: 800;
+    line-height: 1.03;
+    letter-spacing: -.022em;
+    margin: 14px 0 16px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 20px;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 60ch;
+  }
+  .byline {
+    margin-top: 22px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12.5px;
+    color: var(--ink-3);
+  }
+
+  section { margin-top: 52px; }
+  h2 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 32px 0 8px;
+  }
+  p { margin: 0 0 16px; }
+  a { color: var(--v1); }
+
+  /* ---- headline metric strip ---- */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: 14px;
+    margin: 28px 0 8px;
+  }
+  .tile {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--signal);
+    border-radius: 3px;
+    padding: 16px 16px 14px;
+    box-shadow: var(--shadow);
+  }
+  .tile-k {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .tile-v {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    margin-top: 6px;
+    line-height: 1.1;
+  }
+  .tile-n { font-size: 13.5px; color: var(--ink-2); font-family: "Source Serif 4", serif; }
+
+  /* ---- pipeline strip ---- */
+  .pipe {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+    margin: 22px 0 10px;
+  }
+  .stage {
+    flex: 1 1 128px;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 12px 13px;
+  }
+  .stage.e {
+    border-color: var(--signal);
+    background: var(--signal-soft);
+    flex: 1.35 1 190px;
+  }
+  .stage-id {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--signal);
+    letter-spacing: .1em;
+  }
+  .stage-n { font-size: 14.5px; margin-top: 3px; }
+  .stage-s { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.4; }
+
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    align-items: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--v1);
+    border-radius: 3px;
+    padding: 13px 15px;
+    margin: 14px 0 0;
+  }
+  .chain b { color: var(--ink); font-weight: 600; }
+  .chain span.arrow { color: var(--ink-3); }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x: auto; margin: 18px 0 6px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+  }
+  caption {
+    caption-side: bottom;
+    text-align: left;
+    font-family: "Source Serif 4", serif;
+    font-size: 13.5px;
+    color: var(--ink-3);
+    padding-top: 10px;
+  }
+  th {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: right;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  th:first-child { text-align: left; }
+  td {
+    padding: 9px 14px;
+    text-align: right;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td:first-child { text-align: left; font-family: "Source Serif 4", serif; font-size: 14.5px; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--panel-2); }
+  .best { font-weight: 600; color: var(--good); }
+  .worst { color: var(--bad); }
+  .v0col { color: var(--v0); }
+  .v1col { color: var(--v1); }
+
+  .chip {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .chip.safety { color: var(--bad); }
+  .chip.through { color: var(--signal); }
+  .chip.neutral { color: var(--ink-3); }
+
+  /* ---- notes ---- */
+  .note {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--signal);
+    border-radius: 3px;
+    padding: 16px 18px;
+    margin: 18px 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note .eyebrow { display: block; margin-bottom: 6px; }
+
+  ol.bugs { counter-reset: bug; list-style: none; padding: 0; margin: 18px 0 0; }
+  ol.bugs li {
+    counter-increment: bug;
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    padding: 14px 0;
+    border-top: 1px solid var(--rule);
+  }
+  ol.bugs li::before {
+    content: counter(bug, decimal-leading-zero);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--signal);
+    padding-top: 4px;
+  }
+  ol.bugs b { font-family: Archivo, sans-serif; font-weight: 600; }
+
+  ul.plain { padding-left: 20px; margin: 0 0 16px; }
+  ul.plain li { margin-bottom: 8px; }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .88em;
+  }
+  code { background: var(--panel-2); padding: 1px 5px; border-radius: 2px; }
+
+  pre {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 15px 17px;
+    overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--ink-2);
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Step E &mdash; centralized local replanning</div>
+    <h1>A safety shield that stays out of the way</h1>
+    <p class="standfirst">
+      Building the specified attention policy for variable-N multi-AMR local replanning,
+      and measuring what the shield around it is actually made of.
+    </p>
+    <div class="byline">step_e_v1/ &middot; 6 AMRs, 2 workers, 420 frames, 5 seeds &middot; 2026-08-25</div>
+  </header>
+
+  <div class="col">
+    <p>
+      The Step-E specification asks for one module: take a conflict cluster of up to four
+      rail-following AMRs, build one observation per AMR, run a shared-weight attention
+      policy, decode a bounded <span class="mono">(goal_fwd, goal_lat, speed_scale)</span>
+      per AMR, roll each action into a short-horizon trajectory, and let a space-time
+      reservation shield decide which of them may execute.
+    </p>
+    <p>
+      The package now does exactly that, with two planners sharing every stage except the
+      proposal: <b>V0</b>, TTC-priority sequential, and <b>V1</b>, the learned policy.
+      Because they differ in one place only, every number below is attributable.
+    </p>
+  </div>
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="tile-k">V0 collisions</div>
+      <div class="tile-v">0.00</div>
+      <div class="tile-n">100% completion, 5 seeds</div>
+    </div>
+    <div class="tile">
+      <div class="tile-k">V1 stop ratio</div>
+      <div class="tile-v">1.42<span style="font-size:18px">%</span></div>
+      <div class="tile-n">from V0's 3.30%, safety intact</div>
+    </div>
+    <div class="tile">
+      <div class="tile-k">Rollouts / AMR</div>
+      <div class="tile-v">2.86</div>
+      <div class="tile-n">instead of 8, proposal-first</div>
+    </div>
+    <div class="tile">
+      <div class="tile-k">Plan time</div>
+      <div class="tile-v">32<span style="font-size:18px">ms</span></div>
+      <div class="tile-n">per cluster, 5 Hz control</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Where Step E sits</h2>
+    <div class="pipe">
+      <div class="stage"><div class="stage-id">A</div><div class="stage-n">Prediction</div>
+        <div class="stage-s">intent particles, 5 s horizon</div></div>
+      <div class="stage"><div class="stage-id">B</div><div class="stage-n">Safety inflation</div>
+        <div class="stage-s">hard / soft no-go lobes</div></div>
+      <div class="stage"><div class="stage-id">C</div><div class="stage-n">Affected AMR</div>
+        <div class="stage-s">status + TTC per AMR</div></div>
+      <div class="stage"><div class="stage-id">D</div><div class="stage-n">Conflict cluster</div>
+        <div class="stage-s">busy area hull</div></div>
+      <div class="stage e"><div class="stage-id">E</div><div class="stage-n">Local replanning</div>
+        <div class="stage-s">this package &mdash; V0 and V1</div></div>
+    </div>
+    <div class="chain">
+      <b>observation</b><span class="arrow">&rarr;</span>
+      <b>attention policy</b><span class="arrow">&rarr;</span>
+      <b>action decode</b><span class="arrow">&rarr;</span>
+      <b>trajectory rollout</b><span class="arrow">&rarr;</span>
+      <b>4-check shield</b><span class="arrow">&rarr;</span>
+      <b>command</b>
+    </div>
+    <div class="col">
+      <p style="margin-top:18px">
+        The shield checks the worker tube time-aligned, the reserved trajectories of
+        higher-priority AMRs, the inflated workstation rectangles, and the manoeuvre's
+        kinematic feasibility. Safe candidates are ranked by
+        <span class="mono">J = w₁J<sub>worker</sub> + w₂J<sub>amr</sub> + w₃J<sub>route</sub>
+        + w₄J<sub>smooth</sub> + w₅J<sub>delay</sub></span>. Nothing reaches a wheel
+        without passing it.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Results</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>metric</th>
+            <th class="v0col">V0</th>
+            <th class="v1col">V1 proposal-first</th>
+            <th class="v1col">V1 safety-first</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>worker collisions</td><td class="best">0.00</td><td class="worst">0.40</td><td class="best">0.00</td></tr>
+          <tr><td>completion&nbsp;%</td><td class="best">100.0</td><td class="worst">93.3</td><td class="best">100.0</td></tr>
+          <tr><td>path progress&nbsp;%</td><td>100.0</td><td>96.7</td><td>100.0</td></tr>
+          <tr><td>stop ratio&nbsp;%</td><td>3.30</td><td class="best">0.76</td><td class="best">1.42</td></tr>
+          <tr><td>route deviation&nbsp;m</td><td>0.038</td><td>0.084</td><td>0.073</td></tr>
+          <tr><td>AMR-frames replanning</td><td>328</td><td>273</td><td>302</td></tr>
+          <tr><td>candidate rollouts / AMR</td><td>8.00</td><td class="best">2.86</td><td>8.00</td></tr>
+          <tr><td>plan time&nbsp;ms</td><td class="best">32.5</td><td>39.9</td><td>61.4</td></tr>
+        </tbody>
+        <caption>Full simulator, 5 seeds &times; 420 frames. Identical shield behind all three.</caption>
+      </table>
+    </div>
+
+    <div class="col">
+      <h3>V0 saturates the benchmark</h3>
+      <p>
+        The deterministic planner finishes every AMR with zero collisions &mdash; at two,
+        three and four workers alike. What it spends is throughput: it halts on 3.3% of the
+        frames it controls, and overrides its own nominal "full speed, on path" proposal
+        84% of the time. That is the gap a learned proposal can close.
+      </p>
+
+      <h3>What V1 buys, in two modes</h3>
+      <p>
+        In <b>safety-first</b> mode the learned action is one more candidate and the shield
+        still picks the cheapest safe one. Safety and completion are untouched and stopping
+        falls by 57%: the policy proposes manoeuvres the shield accepts more often than
+        V0's nominal one.
+      </p>
+      <p>
+        In <b>proposal-first</b> mode &mdash; the specification's V1 flow, where the policy's
+        own action executes whenever it is safe &mdash; stopping drops further still, and a
+        good proposal makes the backup set unnecessary: <b>2.86 candidate rollouts per AMR
+        instead of 8</b>. The cost is 0.4 collisions per run. A small imitation error is
+        unforgiving in a simulator where workers walk into whatever stands in their way.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What the shield is made of</h2>
+    <div class="col">
+      <p>
+        Each row disables exactly one design decision. Three of them are the difference
+        between a perfect run and a collision; two others carry the throughput.
+      </p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>configuration</th><th>collisions</th><th>completion&nbsp;%</th>
+            <th>stop&nbsp;%</th><th>plan&nbsp;ms</th><th style="text-align:left">carries</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><b>default</b></td><td class="best">0.00</td><td class="best">100.0</td><td>3.3</td><td>38.5</td><td style="text-align:left">&mdash;</td></tr>
+          <tr><td>shorter hard window (1.0 s)</td><td class="worst">1.00</td><td class="worst">83.3</td><td>1.8</td><td>35.9</td><td style="text-align:left"><span class="chip safety">safety</span></td></tr>
+          <tr><td>no emergency reverse</td><td class="worst">1.00</td><td class="worst">83.3</td><td>7.2</td><td>34.1</td><td style="text-align:left"><span class="chip safety">safety</span></td></tr>
+          <tr><td>plain STOP fallback</td><td class="worst">1.00</td><td class="worst">83.3</td><td>35.9</td><td>36.4</td><td style="text-align:left"><span class="chip safety">safety</span></td></tr>
+          <tr><td>backups off (proposal + STOP)</td><td>0.00</td><td class="worst">83.3</td><td>34.0</td><td>15.2</td><td style="text-align:left"><span class="chip through">throughput</span></td></tr>
+          <tr><td>no lateral degree of freedom</td><td>0.00</td><td>100.0</td><td>10.2</td><td>40.0</td><td style="text-align:left"><span class="chip through">throughput</span></td></tr>
+          <tr><td>no detour candidates</td><td>0.00</td><td>100.0</td><td>4.1</td><td>26.3</td><td style="text-align:left"><span class="chip through">throughput</span></td></tr>
+          <tr><td>dense grid (25 candidates)</td><td>0.00</td><td>100.0</td><td>0.5</td><td>130.2</td><td style="text-align:left"><span class="chip through">throughput</span></td></tr>
+          <tr><td>with command-consistency cost</td><td>0.00</td><td>100.0</td><td>4.7</td><td>38.2</td><td style="text-align:left"><span class="chip neutral">neutral</span></td></tr>
+          <tr><td>tighter keep-out (0.85 m)</td><td>0.00</td><td>100.0</td><td>3.3</td><td>37.8</td><td style="text-align:left"><span class="chip neutral">neutral</span></td></tr>
+        </tbody>
+        <caption>V0, 5 seeds. The dense grid buys 2.8 points of stop ratio for 3.4&times; the planning time.</caption>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="eyebrow">The specification was right three times</span>
+      <p>
+        A shortened hard-constraint window, a reduced worker keep-out and a
+        command-consistency cost were all drafted as deviations, to fight an AMR that kept
+        freezing in an aisle. The ablation withdrew all three: the freezing came from a bug
+        in the acceleration limit, and once the manoeuvre kinematics were right, the
+        specified full-horizon constraint won on every metric &mdash; 0.00 against 1.00
+        collisions, 100% against 83.3% completion.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Training</h2>
+    <div class="col">
+      <p>
+        Behaviour cloning against V0's <em>executed</em> command &mdash; not its raw proposal,
+        since most of V0's competence lives in the shield's cost ranking &mdash; reaches the
+        teacher: zero collisions, every cluster resolved. PPO then briefly passes it
+        (return 35.7 against 35.8, shield overrides 8.5% against 9.6%) and afterwards decays.
+      </p>
+      <p>
+        With V0 already at zero collisions and full completion, the shield-constrained
+        optimum is essentially attained, so reinforcement learning has little to gain and a
+        great deal to lose. The honest reading is that the benchmark, not the method, is the
+        binding constraint.
+      </p>
+      <h3>Five bugs worth remembering</h3>
+    </div>
+    <ol class="bugs">
+      <li><div><b>Per-axis acceleration limits</b> allow a combined |dv| of &radic;2&nbsp;a<sub>max</sub>, so the feasibility check rejected every forward candidate whenever a lateral correction was active. Limit the velocity vector.</div></li>
+      <li><div><b>Lateral offset driven by arc-length</b> cannot move a halted AMR at all, and a smoothstep ramp starts at zero slope, so under 5 Hz re-planning the manoeuvre silently dies. Drive it in time.</div></li>
+      <li><div><b>Tracked speed stored as a magnitude</b> made every reverse command restart from a forward speed, so the AMR never actually backed off.</div></li>
+      <li><div><b>Behaviour cloning in raw pre-sigmoid space</b> is ill-conditioned &mdash; the teacher saturates at logit &plusmn;9. Loss fell 10.3 &rarr; 0.007 when moved to decoded action space.</div></li>
+      <li><div><b>Dropout during PPO</b> makes the importance ratio compare two different networks: sampling runs in eval mode, the update in train mode. Return decayed 36 &rarr; 14.</div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Reproduce</h2>
+    <pre>python -m step_e_v1.evaluate --planner v0 --seeds 5
+python -m step_e_v1.train.ppo_trainer --timesteps 25000 --lr 5e-5 --bc-coef 0.5
+python -m step_e_v1.evaluate --planner v1 --model logs/step_e_v1/v1_best.pt \
+       --seeds 5 --set v1_prefer_proposal=False
+python -m step_e_v1.sweep --ablation --seeds 5 --jobs 5
+python -m step_e_v1.render --planner v1 --model logs/step_e_v1/v1_best.pt</pre>
+    <div class="col">
+      <p style="margin-top:18px">
+        Metrics land in <code>outputs/step_e_v1_*.json</code>, checkpoints and the full
+        training log in <code>logs/step_e_v1/</code>, and closed-loop videos in
+        <code>outputs/step_e_v1_v0_demo.mp4</code> and
+        <code>outputs/step_e_v1_v1_demo.mp4</code>. The earlier speed-only Step-E work in
+        <code>Centralized_Local_Planner/rl/</code> is untouched.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    step_e_v1 &middot; commit e66fea6 &middot; torch 2.5.1+cu121, RTX 4060 Laptop
+  </footer>
+</div>
