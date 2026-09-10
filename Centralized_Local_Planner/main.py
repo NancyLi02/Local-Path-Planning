@@ -11,7 +11,15 @@ Two ways to use it
        python -m Centralized_Local_Planner.main safety
        python -m Centralized_Local_Planner.main affected  [--amrs M] [--inject-stray]
        python -m Centralized_Local_Planner.main cluster   [--amrs M]
-       python -m Centralized_Local_Planner.main pipeline            # render all four
+       python -m Centralized_Local_Planner.main pipeline            # render A-D
+
+   The local replanning demo takes the method as a parameter -- one renderer,
+   one camera, one panel, so the four are directly comparable::
+
+       python -m Centralized_Local_Planner.main replan --method stop_and_go
+       python -m Centralized_Local_Planner.main replan --method speed_adjusting
+       python -m Centralized_Local_Planner.main replan --method optimization_based
+       python -m Centralized_Local_Planner.main replan --method learning_based
 
 2. Run the pipeline programmatically (the clean hook for Step E -- RL + local
    replanning). ``Pipeline.step(frame)`` runs A->B->C->D for one frame and
@@ -22,7 +30,7 @@ Two ways to use it
        pipe = Pipeline(num_frames=280, num_workers=2, num_amrs=6)
        for f in range(pipe.num_frames):
            out = pipe.step(f)            # -> dict(worker_data, results, clusters)
-           # Step E (V0/V1) consumes out["clusters"] + out["results"] here.
+           # local_path_replanning consumes out["clusters"] + out["results"] here.
 """
 from __future__ import annotations
 
@@ -200,11 +208,28 @@ def _run_demo(step: str, args) -> None:
             num_amrs=args.amrs, preview=preview, seed=args.seed,
         )
     elif step == "replan":
-        from .viz.render_replanning import build_replanning_animation
-        saved = build_replanning_animation(
-            output_path=out, num_frames=args.frames, num_workers=args.workers,
-            num_amrs=args.amrs, preview=preview, seed=args.seed,
-        )
+        # Every method renders through the one renderer in local_path_replanning,
+        # so switching --method changes the planner and nothing else.
+        import matplotlib
+        matplotlib.use("Agg")
+        from .local_path_replanning.registry import DEFAULT_MODEL, resolve
+        from .local_path_replanning.common.config import PlannerConfig
+        from .local_path_replanning.render import build, simulate
+
+        if preview:
+            raise SystemExit("--preview is not supported for replan; it writes an mp4")
+        method = resolve(args.method)
+        model = args.model
+        if model is None and method == "learning_based":
+            model = DEFAULT_MODEL
+        cfg = PlannerConfig()
+        snaps, rt = simulate(method, cfg, args.frames, args.workers, args.amrs,
+                             args.seed, model, "cpu")
+        out = Path(args.output)
+        if out.name == "demo.mp4":                    # the per-method default
+            out = out.parent / f"demo_{method}.mp4"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        saved = build(snaps, rt, method, out)
     else:
         raise ValueError(step)
 
@@ -218,7 +243,7 @@ _DEFAULT_OUTPUT = {
     "safety":   "2_step_b_safety_inflation/safety_inflation_demo.mp4",
     "affected": "3_step_c_affected_amr/affected_amr_demo.mp4",
     "cluster":  "4_step_d_conflict_cluster/conflict_cluster_demo.mp4",
-    "replan":   "5_step_e_rail_v0_speed/demo.mp4",
+    "replan":   "5_local_path_replanning/demos/demo.mp4",
 }
 _DEFAULT_FRAMES = {"predict": 80, "safety": 280, "affected": 280,
                    "cluster": 280, "replan": 360}
@@ -235,6 +260,13 @@ def _add_common(sp, step: str) -> None:
     sp.add_argument("--no-video", action="store_true", help="alias for --preview")
     if step in ("affected", "cluster", "replan"):
         sp.add_argument("--amrs", type=int, default=6, choices=[1, 2, 3, 4, 5, 6])
+    if step == "replan":
+        from .local_path_replanning.registry import METHODS
+        sp.add_argument("--method", choices=list(METHODS),
+                        default="optimization_based",
+                        help="which local replanning method to drive")
+        sp.add_argument("--model", default=None,
+                        help="checkpoint for --method learning_based")
     if step == "affected":
         sp.add_argument("--inject-stray", action="store_true",
                         help="enable the engineered 'Loader' collision demo")
@@ -245,9 +277,11 @@ def main(argv: list[str] | None = None) -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = pa.add_subparsers(dest="step", required=True)
-    for step in ("predict", "safety", "affected", "cluster", "replan"):
+    for step in ("predict", "safety", "affected", "cluster"):
         _add_common(sub.add_parser(step, help=f"render the {step} demo"), step)
-    sub.add_parser("pipeline", help="render all four step demos in sequence")
+    _add_common(sub.add_parser(
+        "replan", help="render the local replanning demo for one method"), "replan")
+    sub.add_parser("pipeline", help="render the four Step A-D demos in sequence")
 
     args = pa.parse_args(argv)
 

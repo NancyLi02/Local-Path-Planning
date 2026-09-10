@@ -34,15 +34,18 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from light_weight_simulator import (
-    LocalPlannerEnv,
-    PurePursuitController,
-    wrap_angle,
-    _obs_to_path_goal,
-    _obs_normalization_scales,
-    _result_tag,
-    _show_result,
-)
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from Simulators.Single_robot_simulator.env import LocalPlannerEnv
+from Simulators.Single_robot_simulator.controller import PurePursuitController
+from Simulators.Single_robot_simulator.path import wrap_angle, obs_normalization_scales
+from Simulators.Single_robot_simulator.policies import obs_to_path_goal
+from Simulators.Single_robot_simulator.rendering import result_tag, show_result
 
 
 # ======================================================================
@@ -341,7 +344,7 @@ class StateMachineNavigator:
         lat_raw = float(obs[2])
         hdg_raw = float(obs[3])
         if cfg.get("normalize_obs", False):
-            lat_s, _, _, _, _ = _obs_normalization_scales(cfg)
+            lat_s, _, _, _, _ = obs_normalization_scales(cfg)
             lat_raw *= lat_s
             hdg_raw *= np.pi
         return (abs(lat_raw) < self.sm.rejoin_lat_thresh
@@ -350,15 +353,15 @@ class StateMachineNavigator:
     # ----- per-state action generators -----
 
     def _act_path_follow(self, obs: np.ndarray, env: LocalPlannerEnv):
-        return _obs_to_path_goal(obs, env.cfg,
+        return obs_to_path_goal(obs, env.cfg,
                                  lookahead_idx=self.sm.path_follow_lookahead_idx)
 
     def _act_rejoin(self, obs: np.ndarray, env: LocalPlannerEnv):
-        action = _obs_to_path_goal(obs, env.cfg,
+        action = obs_to_path_goal(obs, env.cfg,
                                    lookahead_idx=self.sm.rejoin_lookahead_idx)
         lat_raw = float(obs[2])
         if env.cfg.get("normalize_obs", False):
-            lat_s, _, _, _, _ = _obs_normalization_scales(env.cfg)
+            lat_s, _, _, _, _ = obs_normalization_scales(env.cfg)
             lat_raw *= lat_s
         action[1] -= self.sm.rejoin_lat_gain * lat_raw
         action[1] = np.clip(action[1], *env.cfg["goal_lat_range"])
@@ -482,7 +485,7 @@ def run_episode(
             env.render()
             _overlay(env, state, best_traj, candidates, show_candidates)
 
-    tag = _result_tag(info)
+    tag = result_tag(info)
     es = info.get("episode_stats", {})
 
     return EpisodeResult(
